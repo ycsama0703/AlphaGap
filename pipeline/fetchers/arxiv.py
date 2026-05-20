@@ -72,8 +72,7 @@ def _fetch_category(category: str, since_date: date, max_results: int) -> Iterat
         "sortBy": "submittedDate",
         "sortOrder": "descending",
     }
-    resp = requests.get(ARXIV_API_URL, params=params, timeout=30)
-    resp.raise_for_status()
+    resp = _get_with_retry(ARXIV_API_URL, params)
     feed = feedparser.parse(resp.content)
 
     if feed.bozo and feed.entries == []:
@@ -88,6 +87,28 @@ def _fetch_category(category: str, since_date: date, max_results: int) -> Iterat
             # Results are sorted desc, so we're done with this category
             return
         yield _entry_to_record(entry, category)
+
+
+def _get_with_retry(url: str, params: dict, max_attempts: int = 4) -> requests.Response:
+    """arXiv occasionally returns 429/timeouts. Retry with exponential backoff."""
+    delay = 8.0
+    last_err: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=60)
+            resp.raise_for_status()
+            return resp
+        except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
+            last_err = e
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status == 429 or isinstance(e, (requests.Timeout, requests.ConnectionError)):
+                log.warning("arXiv attempt %d/%d failed (%s); backing off %.0fs",
+                            attempt, max_attempts, e, delay)
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+    raise RuntimeError(f"arXiv request failed after {max_attempts} attempts: {last_err}")
 
 
 def _parse_iso_date(s: str | None) -> date | None:
