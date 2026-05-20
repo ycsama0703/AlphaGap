@@ -38,6 +38,18 @@ _SECTION_RE = re.compile(
 )
 
 
+def render_template(template: str, **kwargs) -> str:
+    """Safe template rendering — replaces only {explicit_key} placeholders.
+
+    Required because our prompt templates contain JSON schema examples with
+    literal { and } that would otherwise break str.format().
+    """
+    result = template
+    for key, value in kwargs.items():
+        result = result.replace("{" + key + "}", str(value))
+    return result
+
+
 @lru_cache(maxsize=16)
 def parse_prompt(name: str) -> tuple[str, str]:
     """Extract (system_prompt, user_template) from a prompt md file by name.
@@ -65,7 +77,8 @@ def extract_l1(client: LLMClient, paper: dict) -> dict:
     Returns dict: {side, method_primary, domain, tags}.
     """
     system, user_template = parse_prompt("01_concept_extract_l1")
-    user = user_template.format(
+    user = render_template(
+        user_template,
         title=paper.get("title", ""),
         abstract=paper.get("abstract", ""),
         affiliations=paper.get("affiliations", ""),
@@ -101,7 +114,8 @@ def _normalize_l1(raw: dict) -> dict:
 def extract_l2(client: LLMClient, paper: dict, l1: dict) -> dict:
     """Run Prompt 02 on priority papers. Requires L1 result as context."""
     system, user_template = parse_prompt("02_concept_extract_l2")
-    user = user_template.format(
+    user = render_template(
+        user_template,
         title=paper.get("title", ""),
         abstract=paper.get("abstract", ""),
         side=l1.get("side", "ai"),
