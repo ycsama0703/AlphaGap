@@ -1,29 +1,114 @@
-"""Semantic Scholar API client — for author enrichment + paper search.
+"""Semantic Scholar API — citation counts + author enrichment.
 
-Endpoints used:
-  /graph/v1/paper/search           — keyword search
-  /graph/v1/paper/{id}             — single paper by id (incl. authors h-index)
-  /graph/v1/author/batch           — batch author metadata
+Used primarily for citation velocity signal (snapshot citations daily,
+compute delta over 30d for trend signal).
 
-Free tier: ~1 RPS without key, higher with S2_API_KEY.
+Endpoints:
+  POST /graph/v1/paper/batch?fields=...    — up to 500 papers per call
 
-TODO:
-  - enrich_authors(paper) — fill h_index, citation_count, affiliations
-  - search(query, year_min) — for filling gaps in arxiv/SSRN coverage
+Rate limits:
+  No key: ~1 RPS
+  With S2_API_KEY env: higher
 """
 from __future__ import annotations
 
+import logging
+import os
+import time
 from dataclasses import dataclass
+
+import requests
+
+
+log = logging.getLogger(__name__)
+
+S2_BASE = "https://api.semanticscholar.org/graph/v1"
+BATCH_SIZE = 500
+RATE_LIMIT_SLEEP = 1.1
+DEFAULT_FIELDS = "citationCount,referenceCount,influentialCitationCount,publicationDate"
 
 
 @dataclass
-class AuthorMeta:
-    s2_id: str
-    name: str
-    h_index: int | None
-    citation_count: int | None
-    affiliations: list[str]
+class S2Paper:
+    arxiv_id: str
+    s2_id: str | None
+    citation_count: int
+    influential_citation_count: int
+    reference_count: int
+    publication_date: str | None
 
 
-def enrich_authors(authors: list[dict]) -> list[AuthorMeta]:
-    raise NotImplementedError
+def _headers() -> dict[str, str]:
+    key = os.environ.get("S2_API_KEY")
+    return {"x-api-key": key} if key else {}
+
+
+def fetch_citation_counts(arxiv_ids: list[str]) -> dict[str, S2Paper]:
+    """Batch-lookup citation counts for many arxiv ids.
+
+    Returns dict arxiv_id → S2Paper. Missing papers silently absent.
+    """
+    out: dict[str, S2Paper] = {}
+    if not arxiv_ids:
+        return out
+
+    for start in range(0, len(arxiv_ids), BATCH_SIZE):
+        chunk = arxiv_ids[start: start + BATCH_SIZE]
+        ids = [f"ARXIV:{a}" for a in chunk]
+
+        try:
+            resp = requests.post(
+                f"{S2_BASE}/paper/batch",
+                params={"fields": DEFAULT_FIELDS},
+                json={"ids": ids},
+                headers=_headers(),
+                timeout=60,
+            )
+        except (requests.Timeout, requests.ConnectionError) as e:
+            log.warning("S2 network error chunk %d: %s", start, e)
+            time.sleep(RATE_LIMIT_SLEEP * 3)
+            continue
+
+        if resp.status_code == 429:
+            log.warning("S2 rate limited; back off 30s")
+            time.sleep(30)
+            continue
+        if resp.status_code != 200:
+            log.warning("S2 HTTP %d: %s", resp.status_code, resp.text[:200])
+            time.sleep(RATE_LIMIT_SLEEP)
+            continue
+
+        for arxiv_id, item in zip(chunk, resp.json()):
+            if not item:
+                continue
+            out[arxiv_id] = S2Paper(
+                arxiv_id=arxiv_id,
+                s2_id=item.get("paperId"),
+                citation_count=item.get("citationCount") or 0,
+                influential_citation_count=item.get("influentialCitationCount") or 0,
+                reference_count=item.get("referenceCount") or 0,
+                publication_date=item.get("publicationDate"),
+            )
+
+        log.info("S2 chunk %d-%d: %d/%d found", start, start + len(chunk),
+                 sum(1 for x in chunk if x in out), len(chunk))
+        time.sleep(RATE_LIMIT_SLEEP)
+
+    return out
+
+
+# CLI quick test
+if __name__ == "__main__":
+    import sys
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    test_ids = sys.argv[1:] if len(sys.argv) > 1 else [
+        "1706.03762",  # Transformer
+        "2303.11366",  # Reflexion
+    ]
+    res = fetch_citation_counts(test_ids)
+    for aid in test_ids:
+        p = res.get(aid)
+        if p:
+            print(f"  {aid}: {p.citation_count} cites ({p.influential_citation_count} influential)")
+        else:
+            print(f"  {aid}: not found")

@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS paper_concepts (
     PRIMARY KEY (paper_id, concept_id, role)
 );
 
+CREATE TABLE IF NOT EXISTS citation_snapshots (
+    paper_id        TEXT NOT NULL REFERENCES papers(id),
+    snapshot_date   TEXT NOT NULL,                -- ISO date 'YYYY-MM-DD'
+    citation_count  INTEGER NOT NULL,
+    influential_citation_count INTEGER DEFAULT 0,
+    PRIMARY KEY (paper_id, snapshot_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cite_snap_date ON citation_snapshots(snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_cite_snap_paper ON citation_snapshots(paper_id);
+
 CREATE TABLE IF NOT EXISTS daily_runs (
     run_date        TEXT PRIMARY KEY,
     started_at      TEXT,
@@ -227,6 +238,57 @@ def upsert_extraction_l2(conn: sqlite3.Connection, paper_id: str, l2: dict) -> N
             paper_id,
         ),
     )
+
+
+def upsert_citation_snapshot(conn: sqlite3.Connection, paper_id: str,
+                              citation_count: int,
+                              influential: int = 0,
+                              snapshot_date: str | None = None) -> None:
+    snap = snapshot_date or date.today().isoformat()
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO citation_snapshots
+            (paper_id, snapshot_date, citation_count, influential_citation_count)
+        VALUES (?, ?, ?, ?)
+        """,
+        (paper_id, snap, citation_count, influential),
+    )
+
+
+def citation_velocity(conn: sqlite3.Connection, paper_id: str,
+                       window_days: int = 30,
+                       as_of: str | None = None) -> tuple[int | None, int | None]:
+    """Returns (velocity, latest_count) for given paper.
+
+    velocity = latest_count - count_at_or_before(as_of - window_days)
+    Returns (None, None) if no snapshot history.
+    """
+    from datetime import timedelta as _td
+    as_of_date = date.fromisoformat(as_of) if as_of else date.today()
+    cutoff = (as_of_date - _td(days=window_days)).isoformat()
+
+    latest = conn.execute(
+        """
+        SELECT citation_count FROM citation_snapshots
+        WHERE paper_id = ? AND snapshot_date <= ?
+        ORDER BY snapshot_date DESC LIMIT 1
+        """,
+        (paper_id, as_of_date.isoformat()),
+    ).fetchone()
+    if latest is None:
+        return None, None
+    latest_count = latest[0]
+
+    prior = conn.execute(
+        """
+        SELECT citation_count FROM citation_snapshots
+        WHERE paper_id = ? AND snapshot_date <= ?
+        ORDER BY snapshot_date DESC LIMIT 1
+        """,
+        (paper_id, cutoff),
+    ).fetchone()
+    prior_count = prior[0] if prior else 0     # treat unseen as 0
+    return (latest_count - prior_count, latest_count)
 
 
 def mark_extraction_failed(conn: sqlite3.Connection, paper_id: str, level: str, err: str) -> None:

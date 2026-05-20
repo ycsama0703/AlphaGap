@@ -23,6 +23,7 @@ pipeline 在调用前应已聚合好：
       "count_recent": 12,
       "count_prior": 4,
       "growth_pct": 200,
+      "citation_velocity_30d": 142,
       "first_seen": "2026-04-15",
       "representative_papers": [
         {"title": "...", "arxiv_id": "2605.xxxxx", "affiliation": "DeepMind"}
@@ -44,9 +45,15 @@ pipeline 在调用前应已聚合好：
 1. 严格 JSON，无任何前后缀
 2. 分四类：rising / falling / new_emergence / stable_hot
    - rising: growth_pct ≥ 50% 且 count_recent ≥ 5
+     【加强信号】若 citation_velocity_30d ≥ 50，更确信是 rising（社区真在用）
    - falling: growth_pct ≤ -40% 且 count_prior ≥ 5
+     【加强信号】若 citation_velocity_30d 也低（≤ 5），降温更可靠
    - new_emergence: first_seen 在 window_recent 内 且 count_recent ≥ 3
    - stable_hot: count_recent ≥ 10 且 |growth_pct| < 30%
+3. 关键区分（两个信号叠加才是真信号）：
+   - paper count 增长 = "更多人在写"（可能 hype）
+   - citation_velocity_30d 高 = "工作真在被引用"（已认真使用）
+   - 两者都高 → 真热点；只 paper count 高 → 仍在 hype 阶段；只 citation 高 → 经典 revisit
 3. 每类最多 5 条
 4. 每条 concept 配一句【为什么值得关注】的简评（≤ 30 字）
    - 简评要点：技术性质（是新方法还是旧方法变种？）、生态信号（来自哪些机构？）

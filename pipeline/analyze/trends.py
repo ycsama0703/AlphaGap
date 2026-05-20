@@ -16,12 +16,25 @@ from datetime import date, timedelta
 from .. import db
 from ..extract.concepts import parse_prompt, render_template
 from ..llm_client import LLMClient
+from . import citations as cite_mod
 
 
 log = logging.getLogger(__name__)
 
-WINDOW_DAYS = 14
-MIN_COUNT_RECENT = 3        # concepts with < 3 papers in window are noise
+# Asymmetric windows reflect different publication cadences:
+#   AI:  arxiv daily + conference batches every 2-3 months → 90d covers one cycle
+#   Fin: SSRN slow + annual journals → 180d for meaningful negative evidence
+WINDOW_DAYS_AI = 90
+WINDOW_DAYS_FIN = 180
+WINDOW_DAYS = WINDOW_DAYS_AI    # legacy default for backwards compat
+MIN_COUNT_RECENT = 3            # concepts with < 3 papers in window are noise
+
+
+def window_for_side(side: str) -> int:
+    """Return the trend observation window for a given side."""
+    if side == "fin":
+        return WINDOW_DAYS_FIN
+    return WINDOW_DAYS_AI   # ai or both
 
 
 def _canonicalize(name: str) -> str:
@@ -94,6 +107,11 @@ def aggregate_concept_counts(side: str, recent_end: date,
             if name not in first_seen or pub_d < first_seen[name]:
                 first_seen[name] = pub_d
 
+    # Citation velocity per concept (over the most recent 30d)
+    velocity_map = cite_mod.concept_velocity_map(
+        side, recent_end, window_days=window_days, velocity_window_days=30
+    )
+
     concepts = []
     for name, n_recent in counts_recent.items():
         if n_recent < MIN_COUNT_RECENT:
@@ -109,6 +127,7 @@ def aggregate_concept_counts(side: str, recent_end: date,
             "count_recent": n_recent,
             "count_prior": n_prior,
             "growth_pct": round(growth, 1),
+            "citation_velocity_30d": velocity_map.get(name, 0),
             "first_seen": first_seen[name].isoformat(),
             "representative_papers": [
                 {
@@ -120,7 +139,11 @@ def aggregate_concept_counts(side: str, recent_end: date,
             ],
         })
 
-    concepts.sort(key=lambda c: c["growth_pct"], reverse=True)
+    # Sort by combined growth + citation velocity (rough rank)
+    concepts.sort(
+        key=lambda c: (c["growth_pct"] + c.get("citation_velocity_30d", 0) * 5),
+        reverse=True,
+    )
 
     return {
         "side": side,
@@ -132,9 +155,15 @@ def aggregate_concept_counts(side: str, recent_end: date,
 
 def summarize_trends(side: str, recent_end: date | None = None,
                      client: LLMClient | None = None,
-                     window_days: int = WINDOW_DAYS) -> dict:
-    """Run Prompt 03 for one side."""
+                     window_days: int | None = None) -> dict:
+    """Run Prompt 03 for one side.
+
+    If window_days not given, picks asymmetric default by side
+    (AI=90, Fin=180).
+    """
     recent_end = recent_end or date.today()
+    if window_days is None:
+        window_days = window_for_side(side)
     payload = aggregate_concept_counts(side, recent_end, window_days=window_days)
 
     if not payload["concepts"]:

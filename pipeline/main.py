@@ -27,6 +27,7 @@ from rich.logging import RichHandler
 
 from . import db, ingest
 from .analyze import brief as brief_mod
+from .analyze import citations as cite_mod
 from .analyze import context as ctx_builder
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
@@ -63,6 +64,14 @@ def run_daily(target_date: date | None = None,
     ingest_stats = ingest.run_ingest(
         lookback_days=lookback, max_l1=max_l1, max_l2=max_l2,
     )
+
+    # 1.5. Citation snapshot — fetches latest citation counts from S2
+    log.info("Step 1.5/6: citation snapshot (S2)")
+    try:
+        cite_stats = cite_mod.snapshot_all_citations()
+        log.info("Citation snapshot: %s", cite_stats)
+    except Exception as e:
+        log.warning("Citation snapshot failed (non-fatal): %s", e)
 
     # 2-3. Gap pipeline (also calls trends internally)
     log.info("Step 2/6: gap pipeline (trends + 04 + 05 + 06 + 07)")

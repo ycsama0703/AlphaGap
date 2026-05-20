@@ -22,6 +22,12 @@
 - 必须达到的标准：读者扫一遍就能判断"能不能做、做需要多久、对比谁、看什么指标"
 - 不强求 dataset/benchmark 名字 100% 正确（用户会自己判断），但必须【具体、完整、不含糊】
 
+观察窗口（重要）：
+- ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
+- fin_recent_papers / fin_trends 来自【过去 ~180 天】（金融发表节奏慢）
+- 工程型 gap 的 motivation / baselines 都应反映这种时间尺度差异
+- 锚定的 AI 论文应该是近期的（90 天内），Fin 锚定论文可以稍老（半年内即可）
+
 输出原则：
 1. 严格 JSON，无前后缀
 2. 每条 gap 必须包含完整的 experimental_roadmap，缺一不可：

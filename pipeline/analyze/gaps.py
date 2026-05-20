@@ -22,21 +22,35 @@ log = logging.getLogger(__name__)
 
 def build_gap_context(end_date: date | None = None,
                       *, ai_top: int = 20, fin_top: int = 10,
-                      window_days: int = 14,
+                      window_days_ai: int | None = None,
+                      window_days_fin: int | None = None,
+                      window_days: int | None = None,   # legacy override
                       client: LLMClient | None = None) -> dict:
-    """Gather all context needed for gap generation prompts."""
+    """Gather all context needed for gap generation prompts.
+
+    Default windows are asymmetric: AI 90d, Fin 180d.
+    Pass window_days to force same window on both sides (debug only).
+    """
     end = end_date or date.today()
     client = client or LLMClient()
 
-    ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=window_days)
-    fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=window_days)
+    if window_days is not None:
+        wd_ai = wd_fin = window_days
+    else:
+        wd_ai = window_days_ai if window_days_ai is not None else trends_mod.WINDOW_DAYS_AI
+        wd_fin = window_days_fin if window_days_fin is not None else trends_mod.WINDOW_DAYS_FIN
+
+    ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=wd_ai)
+    fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     mappings = ctx_builder.load_existing_mappings()
 
-    ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=window_days)
-    fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=window_days)
+    ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=wd_ai)
+    fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=wd_fin)
 
     return {
         "end_date": end,
+        "window_ai_days": wd_ai,
+        "window_fin_days": wd_fin,
         "ai_recent_papers": [ctx_builder.paper_for_prompt(p) for p in ai_papers],
         "fin_recent_papers": [ctx_builder.paper_for_prompt(p) for p in fin_papers],
         "ai_trends": _strip_meta(ai_trends),
@@ -101,24 +115,21 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
 
 def run_gap_pipeline(end_date: date | None = None,
                      *, ai_top: int = 20, fin_top: int = 10,
-                     window_days: int = 14,
+                     window_days_ai: int | None = None,
+                     window_days_fin: int | None = None,
+                     window_days: int | None = None,
                      client: LLMClient | None = None) -> dict:
-    """Full daily gap pipeline.
+    """Full daily gap pipeline (asymmetric windows by default).
 
     Returns:
-      {
-        context: <gap context>,
-        theoretical: [...],     # raw generated (Prompt 04)
-        engineering: [...],     # raw generated (Prompt 05)
-        accepted: [{gap, type, check, score}, ...],   # passed self-check + scored
-        rejected: [{gap, type, check}, ...],
-        downgraded: [{gap, type, check}, ...],
-        email_ready: [...],     # subset of accepted with total >= EMAIL_THRESHOLD
-      }
+      {context, theoretical, engineering, accepted, rejected, downgraded, email_ready}
     """
     client = client or LLMClient()
-    ctx = build_gap_context(end_date, ai_top=ai_top, fin_top=fin_top,
-                            window_days=window_days, client=client)
+    ctx = build_gap_context(
+        end_date, ai_top=ai_top, fin_top=fin_top,
+        window_days_ai=window_days_ai, window_days_fin=window_days_fin,
+        window_days=window_days, client=client,
+    )
 
     th_gaps = generate_theoretical_gaps(ctx, client=client)
     eng_gaps = generate_engineering_gaps(ctx, th_gaps, client=client)
@@ -179,7 +190,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--window", type=int, default=14)
+    parser.add_argument("--window-ai", type=int, default=None,
+                        help="AI side window in days (default 90)")
+    parser.add_argument("--window-fin", type=int, default=None,
+                        help="Fin side window in days (default 180)")
+    parser.add_argument("--window", type=int, default=None,
+                        help="Override both windows (debug)")
     parser.add_argument("--end-date", help="ISO date, default today")
     parser.add_argument("--ai-top", type=int, default=20)
     parser.add_argument("--fin-top", type=int, default=10)
@@ -192,9 +208,16 @@ if __name__ == "__main__":
     end = date.fromisoformat(args.end_date) if args.end_date else date.today()
     client = LLMClient()
 
+    window_kwargs = {
+        "window_days_ai": args.window_ai,
+        "window_days_fin": args.window_fin,
+    }
+    if args.window:
+        window_kwargs = {"window_days": args.window}
+
     if args.full:
         result = run_gap_pipeline(end, ai_top=args.ai_top, fin_top=args.fin_top,
-                                  window_days=args.window, client=client)
+                                  client=client, **window_kwargs)
         print(f"\n=== Pipeline summary ===")
         print(f"Generated: {len(result['theoretical'])} theoretical + {len(result['engineering'])} engineering")
         print(f"Accepted:  {len(result['accepted'])}")
@@ -215,7 +238,7 @@ if __name__ == "__main__":
             print(f"  [{g['_id']}] {item['type']} t={item['score']['total']} | {g.get('hypothesis', '?')[:80]}")
     else:
         ctx = build_gap_context(end, ai_top=args.ai_top, fin_top=args.fin_top,
-                                window_days=args.window, client=client)
+                                client=client, **window_kwargs)
         print(f"AI papers: {len(ctx['ai_recent_papers'])} | Fin: {len(ctx['fin_recent_papers'])}")
 
         th_gaps = generate_theoretical_gaps(ctx, client=client)
