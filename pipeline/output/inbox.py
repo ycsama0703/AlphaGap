@@ -186,6 +186,10 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
                 for r in risks:
                     head += f"  - {r}\n"
 
+    brief_path = item.get("_brief_path") or g.get("_brief_path")
+    if brief_path:
+        head += f"\n**📖 Deep brief**: [`{brief_path}`]({brief_path})\n"
+
     related = g.get("_related_papers") or {}
     if related.get("ai") or related.get("fin"):
         head += "\n**📚 Related work**:\n"

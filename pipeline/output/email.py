@@ -214,6 +214,17 @@ def _gap_card_html(item: dict) -> str:
         out.append(f"<p style='margin:8px 0;font-size:14px;'><b>AI anchor concept</b>: {ai.get('concept','?')}</p>")
         out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Fin anchor</b>: {fin.get('description','?')[:300]}</p>")
 
+    # Deep brief link
+    brief_path = item.get("_brief_path") or g.get("_brief_path")
+    if brief_path:
+        github_url = f"https://github.com/ycsama0703/AlphaGap/blob/main/{brief_path}"
+        out.append(
+            f"<p style='margin:12px 0 8px 0;font-size:14px;'>"
+            f"<b>📖 Deep brief</b>: "
+            f"<a href='{github_url}' style='color:#0066cc;text-decoration:none;'>{brief_path}</a>"
+            f"</p>"
+        )
+
     # Related papers (the main addition)
     related = g.get("_related_papers", {})
     if related.get("ai") or related.get("fin"):

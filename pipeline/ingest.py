@@ -37,8 +37,11 @@ def fetch_all(arxiv_cats: list[str], lookback_days: int, *, include_arxiv: bool 
     by_id: dict[str, dict] = {}
 
     if include_arxiv:
-        for p in arxiv_fetcher.fetch_recent(arxiv_cats, since, max_per_category=200):
-            by_id[p.arxiv_id] = _record_to_dict(p)
+        try:
+            for p in arxiv_fetcher.fetch_recent(arxiv_cats, since, max_per_category=200):
+                by_id[p.arxiv_id] = _record_to_dict(p)
+        except Exception as e:
+            log.warning("arXiv fetch failed (non-fatal, continuing with HF only): %s", e)
 
     if include_hf:
         # HF Daily for each day in the lookback window

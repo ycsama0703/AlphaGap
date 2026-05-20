@@ -26,6 +26,7 @@ from datetime import date
 from rich.logging import RichHandler
 
 from . import db, ingest
+from .analyze import brief as brief_mod
 from .analyze import context as ctx_builder
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
@@ -70,6 +71,18 @@ def run_daily(target_date: date | None = None,
 
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])
+
+    # 3.5. Deep brief for each email-ready gap → briefs/YYYY-MM-DD-GAPID.md
+    log.info("Step 3/6: deep briefs (Prompt 09) for %d email-ready gaps",
+             len(gap_result["email_ready"]))
+    brief_mod.generate_and_save_briefs(
+        target_date,
+        gap_result["email_ready"],
+        gap_result["context"]["ai_trends"],
+        gap_result["context"]["fin_trends"],
+        gap_result["context"]["existing_mappings"],
+        client=client,
+    )
 
     # 4. Mapping actions
     log.info("Step 3/6: mapping update proposals (08)")
