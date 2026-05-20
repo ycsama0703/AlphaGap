@@ -1,7 +1,7 @@
 .PHONY: help install daily weekly dry-run test clean init-db lint
 
 help:
-	@echo "AI×Fin Radar — Make targets"
+	@echo "AlphaGap — Make targets"
 	@echo ""
 	@echo "  make install      安装依赖"
 	@echo "  make init-db      初始化 SQLite schema"

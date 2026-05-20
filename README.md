@@ -1,4 +1,6 @@
-# AI × Fin Radar
+# AlphaGap
+
+> AI × Fin gap detection. Where alpha lives.
 
 每日抓取 AI 与金融领域前沿论文，自动产出 AI→Fin 迁移的 gap 候选（理论型 + 工程型），通过邮件推送，并把可审批的 mapping 提议落到 git 仓库。
 
@@ -41,8 +43,8 @@ output/         邮件推送 + inbox markdown patch + 周报
 ## 数据流
 
 - **L1 资产**（不可再生）：`mappings/` + `ideas/` markdown，git 跟踪
-- **L2 派生**：`db/radar.sqlite` 的 concepts/reports
-- **L3 缓存**：`db/radar.sqlite` 的 papers（丢了可重抓）
+- **L2 派生**：`db/alphagap.sqlite` 的 concepts/reports
+- **L3 缓存**：`db/alphagap.sqlite` 的 papers（丢了可重抓）
 - **L4 不存**：PDF / 网页原文
 
 ## 配置

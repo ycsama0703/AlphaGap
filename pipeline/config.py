@@ -39,8 +39,8 @@ def load_settings() -> Settings:
         resend_api_key=os.environ["RESEND_API_KEY"],
         email_from=os.environ["EMAIL_FROM"],
         email_to=os.environ["EMAIL_TO"],
-        db_path=PROJECT_ROOT / os.getenv("RADAR_DB_PATH", "db/radar.sqlite"),
-        data_dir=PROJECT_ROOT / os.getenv("RADAR_DATA_DIR", "."),
+        db_path=PROJECT_ROOT / os.getenv("ALPHAGAP_DB_PATH", "db/alphagap.sqlite"),
+        data_dir=PROJECT_ROOT / os.getenv("ALPHAGAP_DATA_DIR", "."),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         dry_run=os.getenv("DRY_RUN", "false").lower() == "true",
     )

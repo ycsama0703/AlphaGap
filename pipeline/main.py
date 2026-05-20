@@ -41,7 +41,7 @@ def run_daily(target_date: date | None = None) -> None:
     """Main daily orchestration. target_date defaults to today."""
     target_date = target_date or date.today()
     log = logging.getLogger(__name__)
-    log.info("AI×Fin Radar daily run — %s", target_date)
+    log.info("AlphaGap daily run — %s", target_date)
 
     # TODO: implement orchestration
     # papers = fetch_all(target_date)
