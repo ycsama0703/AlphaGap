@@ -1,0 +1,342 @@
+# AI × Fin Research Radar — Author/Institution Whitelist (v0.1 draft)
+#
+# 用法：
+# - 论文进入候选池的条件 = 以下任一为真（OR 逻辑）：
+#     1) 任一作者机构匹配 institutions.* 中任意条目
+#     2) 任一作者 h-index ≥ thresholds.h_index_{ai|fin}
+#     3) 论文有外部背书（HF Daily / arXiv 热度 / 高 altmetric）
+#     4) 关键词强命中 + 摘要相关性高（LLM 打分 ≥ 阈值）
+# - 满足 ≥2 条 → 优先级提升（push 到 daily digest 顶部）
+# - 字符串匹配时建议小写化 + 去标点 + 子串匹配（"google research" 命中 "Google Research LLC"）
+
+thresholds:
+  h_index_ai: 15        # AI 侧个人 h-index 阈值（新人多，放低）
+  h_index_fin: 20       # Fin 侧个人 h-index 阈值（资历更重要）
+  llm_relevance: 0.7    # LLM 摘要相关性打分阈值（0-1）
+
+# =========================================================================
+# AI 侧机构白名单
+# =========================================================================
+institutions:
+  ai_industry:
+    # 美国大厂研究院
+    - Google Research
+    - Google DeepMind
+    - DeepMind
+    - Google Brain          # 历史名，老论文有
+    - Meta AI
+    - FAIR                  # Facebook AI Research
+    - Microsoft Research
+    - MSR
+    - OpenAI
+    - Anthropic
+    - Apple
+    - Apple ML
+    - NVIDIA
+    - NVIDIA Research
+    - Amazon Science
+    - AWS AI
+    - IBM Research
+    - Salesforce Research
+    - Adobe Research
+
+    # AI 新锐
+    - xAI
+    - Mistral
+    - Mistral AI
+    - Cohere
+    - AI21
+    - Inflection
+    - Reka
+    - Character AI
+    - Perplexity
+
+    # 中国大厂 / 新锐
+    - ByteDance
+    - ByteDance Seed
+    - Seed
+    - Alibaba
+    - Alibaba DAMO
+    - Qwen
+    - Tongyi
+    - Tencent
+    - Tencent AI Lab
+    - Baidu
+    - Huawei
+    - Huawei Noah
+    - DeepSeek
+    - Moonshot
+    - 01.AI
+    - Zhipu
+    - MiniMax
+    - StepFun
+    - Kuaishou
+
+  ai_academia:
+    # 美国 top
+    - Stanford
+    - MIT
+    - Carnegie Mellon
+    - CMU
+    - UC Berkeley
+    - Berkeley
+    - Princeton
+    - Cornell
+    - University of Washington
+    - UW
+    - Harvard
+    - Yale
+    - Columbia
+    - UCLA
+    - UCSD
+    - Georgia Tech
+    - UIUC
+    - University of Michigan
+    - NYU
+
+    # 欧洲 / 加拿大 / 以色列
+    - ETH Zurich
+    - EPFL
+    - Oxford
+    - Cambridge
+    - UCL
+    - Imperial College
+    - Max Planck
+    - INRIA
+    - Toronto
+    - Mila
+    - McGill
+    - Technion
+    - Hebrew University
+
+    # 亚太
+    - Tsinghua
+    - Peking University
+    - PKU
+    - Shanghai Jiao Tong
+    - SJTU
+    - Fudan
+    - Zhejiang University
+    - USTC
+    - HKU
+    - HKUST
+    - CUHK
+    - NUS
+    - NTU
+    - KAIST
+    - Seoul National
+    - University of Tokyo
+
+# =========================================================================
+# Fin 侧机构白名单
+# =========================================================================
+  fin_industry:
+    # 投行
+    - JPMorgan
+    - JP Morgan
+    - JPMorgan AI Research
+    - Goldman Sachs
+    - Morgan Stanley
+    - Bank of America
+    - Citi
+    - UBS
+
+    # 资管 / 对冲
+    - BlackRock
+    - BlackRock AI Labs
+    - Bridgewater
+    - Two Sigma
+    - Citadel
+    - Citadel Securities
+    - Jane Street
+    - Man Group
+    - Man AHL
+    - AQR
+    - AQR Capital
+    - WorldQuant
+    - D.E. Shaw
+    - DE Shaw
+    - PIMCO
+    - State Street
+    - Vanguard
+
+    # 数据 / 金融科技
+    - Bloomberg
+    - Bloomberg AI
+    - S&P Global
+    - Moody's
+    - Refinitiv
+    - MSCI
+
+    # 中国金融
+    - Ant Group
+    - 蚂蚁集团
+    - Ping An
+    - 平安
+    - Huatai
+    - 华泰证券
+    - CICC
+    - 中金公司
+    - GF Securities
+    - 国信证券
+
+  fin_academia:
+    # 美国 top finance schools
+    - Chicago Booth
+    - University of Chicago
+    - Wharton
+    - University of Pennsylvania
+    - MIT Sloan
+    - Stanford GSB
+    - Harvard Business School
+    - HBS
+    - Columbia Business School
+    - NYU Stern
+    - Yale SOM
+    - Kellogg
+    - Northwestern
+    - Booth
+    - Berkeley Haas
+    - Anderson UCLA
+
+    # 欧洲 / 其他
+    - London Business School
+    - LBS
+    - INSEAD
+    - LSE
+    - HEC Paris
+    - Bocconi
+    - Oxford Said
+    - Cambridge Judge
+
+    # 亚太
+    - Tsinghua PBC
+    - Tsinghua SEM
+    - PKU Guanghua
+    - 光华
+    - HKUST Business
+    - HKU Business
+    - CUHK Business
+    - NUS Business
+    - Shanghai Advanced Institute of Finance
+    - SAIF
+
+# =========================================================================
+# Fin 侧 big-name 作者（个人）—— 即使机构没匹配上也通过
+# =========================================================================
+named_authors_fin:
+  - Bryan Kelly                 # Yale, AQR, factor zoo / ML in asset pricing
+  - Stefan Nagel                # Chicago, ML in asset pricing
+  - Marcos Lopez de Prado       # Cornell, ADIA, ML for portfolio
+  - Lin William Cong            # Cornell, AI×Fin, crypto
+  - Dacheng Xiu                 # Chicago Booth, ML asset pricing
+  - Markus Pelger               # Stanford, deep factors
+  - Serhiy Kozak                # Maryland, factor pricing
+  - Shihao Gu                   # Hong Kong, ML asset pricing
+  - Tobias Adrian               # IMF, macro-finance
+  - Robert Engle                # NYU, volatility (老牌但仍活跃)
+  - Andrew Lo                   # MIT, ML × finance pioneer
+  - Campbell Harvey             # Duke, factor research
+  - John Cochrane               # Hoover, asset pricing
+  - Jonathan Berk               # Stanford, mutual funds
+  # 中国学者
+  - Guofu Zhou                  # Washington U / 多产
+  - Yufeng Han
+  # （持续补充）
+
+# =========================================================================
+# 关键词（用于召回 + LLM 相关性打分）
+# =========================================================================
+keywords:
+  ai_side:
+    agent:
+      - LLM agent
+      - tool use
+      - multi-agent
+      - agentic workflow
+      - planning
+      - tree of thoughts
+      - reflection
+    llm_core:
+      - in-context learning
+      - chain of thought
+      - reasoning
+      - long context
+      - retrieval augmented
+      - RAG
+    ml_dl:
+      - representation learning
+      - self-supervised
+      - contrastive
+      - foundation model
+      - transfer learning
+      - meta-learning
+      - few-shot
+    rl:
+      - reinforcement learning
+      - offline RL
+      - RLHF
+      - DPO
+      - world model
+      - exploration
+    time_series_fm:   # AI×Fin 的关键桥梁
+      - time series foundation model
+      - TimesFM
+      - Chronos
+      - Moirai
+      - Lag-Llama
+      - time series transformer
+
+  fin_side:
+    factor:
+      - factor investing
+      - factor discovery
+      - alpha mining
+      - cross-section returns
+      - characteristics
+    forecast:
+      - return prediction
+      - volatility forecasting
+      - regime detection
+      - market prediction
+    portfolio:
+      - portfolio optimization
+      - asset allocation
+      - risk parity
+      - mean-variance
+      - portfolio construction
+    time_series_fin:
+      - financial time series
+      - high frequency
+      - microstructure
+      - limit order book
+      - volatility modeling
+
+# =========================================================================
+# 数据源配置
+# =========================================================================
+sources:
+  ai:
+    primary:
+      - huggingface_daily        # https://huggingface.co/papers
+    supplementary:
+      - arxiv:cs.LG
+      - arxiv:cs.CL
+      - arxiv:cs.AI
+      - arxiv:cs.MA              # multi-agent
+    frequency: daily
+
+  fin:
+    primary:
+      - arxiv:q-fin.PM           # portfolio management
+      - arxiv:q-fin.ST           # statistical finance
+      - arxiv:q-fin.TR           # trading & market microstructure
+      - arxiv:q-fin.CP           # computational finance
+    supplementary:
+      - ssrn_fen                 # Financial Economics Network, weekly digest
+      - semantic_scholar_search  # 关键词搜补漏
+    frequency: daily_arxiv_weekly_ssrn
+
+  enrichment:
+    - semantic_scholar           # 作者 h-index, citations, affiliations
+    - openalex                   # 机构 ROR ID 标准化

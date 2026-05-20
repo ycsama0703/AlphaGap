@@ -1,0 +1,13 @@
+# AI×Fin Radar — example crontab
+#
+# Install:
+#   crontab -e
+#   (then paste lines below, adjusting paths)
+#
+# Or use systemd timer (see deploy/systemd/ — TODO).
+
+# Daily run at 07:00 server time
+0 7 * * * cd /opt/ai-fin-radar && /opt/ai-fin-radar/.venv/bin/python -m pipeline.main daily >> logs/daily.log 2>&1
+
+# Weekly report at Monday 08:00
+0 8 * * 1 cd /opt/ai-fin-radar && /opt/ai-fin-radar/.venv/bin/python -m pipeline.main weekly >> logs/weekly.log 2>&1
