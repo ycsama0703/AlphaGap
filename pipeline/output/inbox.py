@@ -135,6 +135,16 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
     head += f"- novelty: {s.get('novelty_reason', '')}\n"
     head += f"- actionability: {s.get('actionability_reason', '')}\n"
 
+    ctx = g.get("research_context") or {}
+    if ctx:
+        head += "\n**Research context**:\n"
+        if ctx.get("fin_current_state"):
+            head += f"- 🏦 *Fin 当前进展*: {ctx['fin_current_state']}\n"
+        if ctx.get("ai_frontier"):
+            head += f"- 🤖 *AI 前沿*: {ctx['ai_frontier']}\n"
+        if ctx.get("why_this_matters"):
+            head += f"- ⭐ *为什么这个 gap 值得做*: {ctx['why_this_matters']}\n"
+
     if gtype == "theoretical":
         ai = g.get("ai_anchor", {})
         fin = g.get("fin_anchor", {})

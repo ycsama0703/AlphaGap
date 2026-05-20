@@ -148,6 +148,18 @@ def _gaps_html(p: dict) -> str:
             f"total={s['total']} · novelty={s['novelty']} · actionability={s['actionability']}</p>"
             f"<p><b>假设</b>: {hyp}</p>"
         )
+
+        ctx = g.get("research_context") or {}
+        if ctx:
+            out.append("<div style='background:#f6f8fa;padding:8px 12px;border-radius:6px;margin:8px 0;'>")
+            if ctx.get("fin_current_state"):
+                out.append(f"<p style='margin:4px 0;'><b>🏦 Fin 当前进展</b>: {ctx['fin_current_state']}</p>")
+            if ctx.get("ai_frontier"):
+                out.append(f"<p style='margin:4px 0;'><b>🤖 AI 前沿</b>: {ctx['ai_frontier']}</p>")
+            if ctx.get("why_this_matters"):
+                out.append(f"<p style='margin:4px 0;'><b>⭐ 为什么这个 gap 值得做</b>: {ctx['why_this_matters']}</p>")
+            out.append("</div>")
+
         if gtype == "engineering":
             roadmap = g.get("experimental_roadmap", {}) or {}
             out.append(f"<p><b>Data</b>: {roadmap.get('data','?')}</p>")

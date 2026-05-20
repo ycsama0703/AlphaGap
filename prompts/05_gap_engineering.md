@@ -27,6 +27,10 @@
 2. 每条 gap 必须包含完整的 experimental_roadmap，缺一不可：
    - hypothesis: 一句话研究假设（≤ 80 字）
    - motivation: 3-5 句，为什么这个迁移可能 work（AI 侧最新进展 + Fin 侧现状缺陷）
+   - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
+     * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
+     * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
+     * why_this_matters: 1-2 句，为什么这个 gap 值得做（学术/产业/数据可得性），潜在 impact
    - data: 具体数据描述（数据源 + 时间范围 + 频率 + 切分方式）
    - method: 至少 3 步的方法描述，足以让人照着写伪代码
    - metrics: 主指标 + 次指标（≥ 2 个，量化）
@@ -51,6 +55,11 @@
 {
   "hypothesis": "用 verifier-guided self-correction 改进因子组合搜索，降低 OOS 过拟合",
   "motivation": "当前因子搜索（GP / NN）依赖 train/val 分数选优，对 OOS 性能不直接优化。AI 侧 Reflexion 思路在代码生成上证明 verifier 反馈能显著降低 false positive。迁移到因子搜索：生成候选因子 → verifier 评估 → 反思重写循环。",
+  "research_context": {
+    "fin_current_state": "因子组合搜索目前主要靠 genetic programming（gplearn）或 NN-based 端到端学习，依赖 train/val 集打分选优；Cong et al. 2024 的 alpha-GPT 引入 LLM agent 但未加 verifier 闭环。OOS 过拟合是公认痛点。",
+    "ai_frontier": "2023 Reflexion 在代码生成上首次证明'生成-验证-反思'循环显著降低 false positive；2024-2025 verifier-based RM（Lightman et al. process reward, DeepMind Reflective RM）进一步把验证器变成可训练模块，对长程任务效果显著。",
+    "why_this_matters": "因子搜索每年学术+产业大量重复劳动，verifier 闭环若能稳定降低 OOS 衰减率 20%+，工业界直接落地价值显著；学术上也是 'AI agent for scientific discovery' 在金融领域的首个端到端方案。"
+  },
   "experimental_roadmap": {
     "data": "美股月频，CRSP 收益数据 1963-2023，Compustat 财务数据 1970-2023。Train: 1970-2000, Val: 2001-2010, Test: 2011-2023。时序切分不打乱。",
     "method": [
@@ -113,6 +122,11 @@ Schema:
     {
       "hypothesis": string,
       "motivation": string,
+      "research_context": {
+        "fin_current_state": string,
+        "ai_frontier": string,
+        "why_this_matters": string
+      },
       "experimental_roadmap": {
         "data": string,
         "method": [string],

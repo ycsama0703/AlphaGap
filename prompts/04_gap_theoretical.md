@@ -58,6 +58,10 @@ pipeline 调用前聚合：
    - hypothesis: 一句话假设（≤ 80 字）
    - ai_anchor: 锚定的 AI 论文 ID（在输入 ai_recent_papers 中）+ AI 概念名
    - fin_anchor: 锚定的 Fin 现状描述（可引用 fin_recent_papers 中的 ID，或描述"Fin 侧仍在用 X"）
+   - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
+     * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
+     * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
+     * why_this_matters: 1-2 句，为什么这个 gap 值得追，潜在 impact 是什么（学术/产业/数据可得性等）
    - reasoning_chain: 3-5 步的迁移推理（为什么 AI 的 X 可能用于 Fin 的 Y？）
    - why_open_gap: 为何认定 Fin 侧还没用上（必须基于 fin_recent_papers / existing_mappings 的负面证据）
    - related_mappings: 若与 existing_mappings 有关联，列出 ID
@@ -77,6 +81,11 @@ pipeline 调用前聚合：
   "fin_anchor": {
     "description": "Fin 侧因子衰减诊断仍依赖统计检验（rolling Sharpe, structural break test）",
     "evidence_paper_ids": []
+  },
+  "research_context": {
+    "fin_current_state": "金融实践中因子衰减诊断主流仍是滚动 Sharpe、结构断点检验、IC 衰减监控等统计方法；学术上 Kelly et al. 2020/Chen-Pelger-Zhu 2022 用 ML 预测因子收益但缺乏对因子失效原因的内部归因。",
+    "ai_frontier": "2024-2025 Anthropic Sparse Autoencoder 工作（Templeton et al.）首次实现对 Claude 模型内部特征的可解释抽取，可定位'某能力对应的子电路'；后续 Gemma Scope、Llama-Scope 等开源工具让该技术不再局限于闭源模型。",
+    "why_this_matters": "因子衰减预警是 quant 实务核心痛点之一，目前 Sharpe 下降被发现时 PnL 已经亏出；若能在'模型内部表征下降'阶段提前预警，可显著提升因子换仓决策的 timing。学术上也填补了 ML 因子模型可解释性的空白。"
   },
   "reasoning_chain": [
     "AI 侧 sparse autoencoder 能定位模型内部对某概念敏感的子电路",
@@ -121,6 +130,11 @@ pipeline 调用前聚合：
       "hypothesis": string,
       "ai_anchor": {"paper_id": string, "concept": string},
       "fin_anchor": {"description": string, "evidence_paper_ids": [string]},
+      "research_context": {
+        "fin_current_state": string,
+        "ai_frontier": string,
+        "why_this_matters": string
+      },
       "reasoning_chain": [string],
       "why_open_gap": string,
       "related_mappings": [string]
