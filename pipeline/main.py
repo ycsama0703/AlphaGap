@@ -1,31 +1,41 @@
 """Daily pipeline entrypoint.
 
 Usage:
-    python -m pipeline.main daily       # daily run (production)
-    python -m pipeline.main weekly      # weekly report
-    DRY_RUN=true python -m pipeline.main daily   # no email, no inbox writes
+    python -m pipeline.main daily              # daily run (production)
+    python -m pipeline.main daily --dry-run    # no email send, no commit
+    python -m pipeline.main weekly             # weekly report (TODO)
 
 Daily flow:
-    1. Fetch papers (arxiv + hf_daily + ssrn)
-    2. Filter via whitelist (institutions / h-index / hf signal / keywords)
-    3. Extract L1 (all filtered) + L2 (priority subset)
-    4. Persist to SQLite
-    5. Summarize trends (AI + Fin, 14-day rolling)
-    6. Generate gaps (theoretical → engineering)
-    7. Self-check + score
-    8. Propose mapping updates
-    9. Write inbox/YYYY-MM-DD.md + git commit
-    10. Send email digest
+    1. Ingest: fetch + filter + persist + L1/L2 extract
+    2. Trends: aggregate concepts, summarize via LLM
+    3. Gaps: generate (04+05) → self-check (06) → score (07)
+    4. Mapping actions: propose updates (08)
+    5. Inbox: write inbox/YYYY-MM-DD.md
+    6. Email: send daily digest via Resend
+    7. (Optional) Git commit + push inbox
 """
 from __future__ import annotations
 
+import argparse
 import logging
+import subprocess
 import sys
+import traceback
 from datetime import date
 
 from rich.logging import RichHandler
 
-from .config import load_settings
+from . import db, ingest
+from .analyze import context as ctx_builder
+from .analyze import gaps as gaps_mod
+from .analyze import mapping_update as map_mod
+from .config import PROJECT_ROOT, load_settings
+from .llm_client import LLMClient
+from .output import email as email_mod
+from .output import inbox as inbox_mod
+
+
+log = logging.getLogger(__name__)
 
 
 def setup_logging(level: str) -> None:
@@ -37,47 +47,132 @@ def setup_logging(level: str) -> None:
     )
 
 
-def run_daily(target_date: date | None = None) -> None:
-    """Main daily orchestration. target_date defaults to today."""
+def run_daily(target_date: date | None = None,
+              *, lookback: int = 1, max_l1: int = 80, max_l2: int = 20,
+              git_commit: bool = True) -> dict:
     target_date = target_date or date.today()
-    log = logging.getLogger(__name__)
-    log.info("AlphaGap daily run — %s", target_date)
+    log.info("=== AlphaGap daily run %s ===", target_date)
 
-    # TODO: implement orchestration
-    # papers = fetch_all(target_date)
-    # filtered = filter_by_whitelist(papers)
-    # extract_concepts(filtered)
-    # trends_ai = summarize_trends("ai", target_date)
-    # trends_fin = summarize_trends("fin", target_date)
-    # gaps_th = generate_theoretical_gaps(...)
-    # gaps_eng = generate_engineering_gaps(...)
-    # accepted = [g for g in gaps if self_check(g) == "accept" and score(g).total >= 8]
-    # mapping_actions = propose_mapping_updates(...)
-    # write_daily_inbox(target_date, payload)
-    # send_daily_email(payload)
-    raise NotImplementedError
+    s = load_settings()
+    db.init_schema()
+
+    # 1. Ingest
+    log.info("Step 1/6: ingest")
+    ingest_stats = ingest.run_ingest(
+        lookback_days=lookback, max_l1=max_l1, max_l2=max_l2,
+    )
+
+    # 2-3. Gap pipeline (also calls trends internally)
+    log.info("Step 2/6: gap pipeline (trends + 04 + 05 + 06 + 07)")
+    client = LLMClient()
+    gap_result = gaps_mod.run_gap_pipeline(target_date, client=client)
+
+    # 4. Mapping actions
+    log.info("Step 3/6: mapping update proposals (08)")
+    today_papers_for_map = gap_result["context"]["ai_recent_papers"] + \
+                            gap_result["context"]["fin_recent_papers"]
+    mapping_actions = map_mod.propose_mapping_updates(
+        today_papers_for_map,
+        gap_result["context"]["existing_mappings"],
+        gap_result["accepted"],
+        client=client,
+    )
+
+    # Assemble inbox/email payload
+    payload = {
+        "stats": {
+            "fetched": ingest_stats.get("fetched"),
+            "candidates": ingest_stats.get("candidates"),
+            "l1_done": ingest_stats.get("l1_done"),
+            "l2_done": ingest_stats.get("l2_done"),
+            "cost_usd": round(
+                (ingest_stats.get("cost_usd", 0) or 0) + client.estimate_cost_usd(), 4
+            ),
+        },
+        "top_papers": gap_result["context"]["ai_recent_papers"][:5] +
+                      gap_result["context"]["fin_recent_papers"][:3],
+        "ai_trends": gap_result["context"]["ai_trends"],
+        "fin_trends": gap_result["context"]["fin_trends"],
+        "theoretical": gap_result["theoretical"],
+        "engineering": gap_result["engineering"],
+        "accepted": gap_result["accepted"],
+        "email_ready": gap_result["email_ready"],
+        "mapping_actions": mapping_actions,
+    }
+
+    # 5. Inbox
+    log.info("Step 4/6: write inbox markdown")
+    inbox_path = inbox_mod.write_daily_inbox(target_date, payload)
+
+    # 6. Email
+    log.info("Step 5/6: send email")
+    try:
+        email_mod.send_daily_email(target_date, payload)
+    except Exception as e:
+        log.error("Email send failed: %s", e)
+
+    # 7. Git commit (optional, server-side cron should enable)
+    if git_commit and not s.dry_run:
+        log.info("Step 6/6: git commit + push")
+        try:
+            _git_commit_inbox(inbox_path, target_date)
+        except Exception as e:
+            log.warning("Git commit failed (non-fatal): %s", e)
+
+    log.info("=== Done. Total cost: $%.4f ===", payload["stats"]["cost_usd"])
+    return payload
+
+
+def _git_commit_inbox(inbox_path, target_date: date) -> None:
+    rel = inbox_path.relative_to(PROJECT_ROOT)
+    subprocess.run(["git", "add", str(rel)], cwd=PROJECT_ROOT, check=True)
+    msg = f"inbox: {target_date.isoformat()} daily run"
+    subprocess.run(["git", "commit", "-m", msg], cwd=PROJECT_ROOT, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=PROJECT_ROOT, check=True)
 
 
 def run_weekly(week_end: date | None = None) -> None:
-    raise NotImplementedError
+    raise NotImplementedError("Weekly report not yet implemented")
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=["daily", "weekly"])
+    parser.add_argument("--date", help="ISO date, default today")
+    parser.add_argument("--lookback", type=int, default=1)
+    parser.add_argument("--max-l1", type=int, default=80)
+    parser.add_argument("--max-l2", type=int, default=20)
+    parser.add_argument("--no-commit", action="store_true",
+                        help="Skip git commit/push (useful for local testing)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Override DRY_RUN env: no email, no commit")
+    args = parser.parse_args()
+
+    if args.dry_run:
+        import os
+        os.environ["DRY_RUN"] = "true"
+
     s = load_settings()
     setup_logging(s.log_level)
 
-    if len(sys.argv) < 2:
-        print("Usage: python -m pipeline.main {daily|weekly}")
-        sys.exit(1)
+    target_date = date.fromisoformat(args.date) if args.date else date.today()
 
-    cmd = sys.argv[1]
-    if cmd == "daily":
-        run_daily()
-    elif cmd == "weekly":
-        run_weekly()
-    else:
-        print(f"Unknown command: {cmd}")
-        sys.exit(1)
+    if args.command == "daily":
+        try:
+            run_daily(target_date,
+                      lookback=args.lookback,
+                      max_l1=args.max_l1,
+                      max_l2=args.max_l2,
+                      git_commit=not args.no_commit)
+        except Exception:
+            log.error("Pipeline crashed:\n%s", traceback.format_exc())
+            try:
+                email_mod.send_failure_alert(target_date, traceback.format_exc())
+            except Exception as e2:
+                log.error("Could not even send failure alert: %s", e2)
+            sys.exit(1)
+    elif args.command == "weekly":
+        run_weekly(target_date)
 
 
 if __name__ == "__main__":
