@@ -31,10 +31,10 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         f"# AlphaGap Daily — {d.isoformat()}",
         "",
         _section_stats(payload),
-        _section_top_papers(payload),
-        _section_trends(payload),
-        _section_gaps_email(payload),
+        _section_gaps_email(payload),       # ⭐ moved to top
         _section_gaps_all(payload),
+        _section_trends(payload),
+        _section_top_papers(payload),
         _section_mapping_actions(payload),
         _section_review_instructions(),
     ]
@@ -185,6 +185,32 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
                 head += "\n**Risks**:\n"
                 for r in risks:
                     head += f"  - {r}\n"
+
+    related = g.get("_related_papers") or {}
+    if related.get("ai") or related.get("fin"):
+        head += "\n**📚 Related work**:\n"
+        if related.get("ai"):
+            head += "\n*AI side*:\n"
+            for paper in related["ai"]:
+                t = (paper.get("title") or "?")[:100]
+                extra = " · ".join(
+                    x for x in [paper.get("affiliation"), paper.get("method")] if x
+                )
+                head += f"  - [[{paper.get('id', '?')}]({paper.get('url', '')})] {t}"
+                if extra:
+                    head += f"  _{extra}_"
+                head += "\n"
+        if related.get("fin"):
+            head += "\n*Fin side*:\n"
+            for paper in related["fin"]:
+                t = (paper.get("title") or "?")[:100]
+                extra = " · ".join(
+                    x for x in [paper.get("affiliation"), paper.get("method")] if x
+                )
+                head += f"  - [[{paper.get('id', '?')}]({paper.get('url', '')})] {t}"
+                if extra:
+                    head += f"  _{extra}_"
+                head += "\n"
 
     head += "\n> Decision: [ ] accept  [ ] reject  [ ] modify (edit above, save)\n"
     return head

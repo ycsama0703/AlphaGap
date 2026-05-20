@@ -27,6 +27,7 @@ from rich.logging import RichHandler
 
 from . import db, ingest
 from .analyze import context as ctx_builder
+from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
 from .analyze import mapping_update as map_mod
 from .config import PROJECT_ROOT, load_settings
@@ -66,6 +67,9 @@ def run_daily(target_date: date | None = None,
     log.info("Step 2/6: gap pipeline (trends + 04 + 05 + 06 + 07)")
     client = LLMClient()
     gap_result = gaps_mod.run_gap_pipeline(target_date, client=client)
+
+    # Enrich gaps with full paper details from DB (for rendering)
+    enrich_mod.enrich_accepted(gap_result["accepted"])
 
     # 4. Mapping actions
     log.info("Step 3/6: mapping update proposals (08)")

@@ -68,122 +68,190 @@ def send_failure_alert(d: date, error: str) -> None:
 
 def _render_html(d: date, p: dict) -> str:
     parts = [
-        f"<h1>AlphaGap Daily — {d.isoformat()}</h1>",
-        f"<p>Full audit: <code>inbox/{d.isoformat()}.md</code> (git pull to review)</p>",
-        _stats_html(p),
-        _papers_html(p),
+        "<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;'>",
+        f"<h1 style='margin-bottom:4px;'>AlphaGap — {d.isoformat()}</h1>",
+        _stats_compact_html(p),
+        _gaps_html(p),                # ⭐ moved to top
         _trends_html(p),
-        _gaps_html(p),
+        _papers_html(p),
         _mapping_actions_html(p),
+        f"<p style='color:#888;font-size:12px;margin-top:24px;'>"
+        f"Full audit: <code>inbox/{d.isoformat()}.md</code> · "
+        f"<code>git pull</code> to review</p>",
+        "</div>",
     ]
     return "\n".join(parts)
 
 
-def _stats_html(p: dict) -> str:
+def _stats_compact_html(p: dict) -> str:
     s = p.get("stats", {})
     return (
-        f"<h2>Pipeline</h2><ul>"
-        f"<li>Papers: {s.get('fetched','?')} fetched · {s.get('candidates','?')} candidates</li>"
-        f"<li>L1: {s.get('l1_done','?')} | L2: {s.get('l2_done','?')}</li>"
-        f"<li>Gaps: {len(p.get('theoretical', []))} theoretical + {len(p.get('engineering', []))} engineering</li>"
-        f"<li>Accepted: {len(p.get('accepted', []))} | Email-ready: {len(p.get('email_ready', []))}</li>"
-        f"<li>LLM cost: ${s.get('cost_usd', 0):.4f}</li></ul>"
+        f"<p style='color:#888;font-size:13px;margin-top:0;'>"
+        f"{s.get('fetched','?')} papers · {s.get('l1_done','?')} extracted · "
+        f"{len(p.get('theoretical',[]))} theoretical + {len(p.get('engineering',[]))} engineering gaps · "
+        f"<b style='color:#000;'>{len(p.get('email_ready',[]))} email-ready</b> · "
+        f"${s.get('cost_usd', 0):.4f}</p>"
     )
 
 
+def _stats_html(p: dict) -> str:
+    return _stats_compact_html(p)
+
+
 def _papers_html(p: dict) -> str:
-    papers = p.get("top_papers", [])[:7]
+    papers = p.get("top_papers", [])[:5]
     if not papers:
         return ""
     rows = []
     for paper in papers:
-        title = paper.get("title", "?")
+        title = paper.get("title", "?")[:100]
         affil = paper.get("affiliation_top", "") or "—"
-        score = paper.get("score") or paper.get("priority_score") or 0
         url = paper.get("url") or f"https://arxiv.org/abs/{paper.get('id', '')}"
-        method = ", ".join(paper.get("method_primary", [])[:2])
         rows.append(
-            f"<li><a href='{url}'>[{paper.get('id','?')}]</a> "
-            f"<b>{title}</b><br>"
-            f"<small>{affil} · score {score} · method: {method}</small></li>"
+            f"<li style='margin:4px 0;'><a href='{url}' style='color:#0066cc;text-decoration:none;'>"
+            f"[{paper.get('id','?')}]</a> {title} "
+            f"<span style='color:#888;font-size:12px;'>· {affil}</span></li>"
         )
-    return f"<h2>Top Papers</h2><ul>{''.join(rows)}</ul>"
+    return (
+        f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
+        f"📄 Top Papers (today)</h2>"
+        f"<ul style='font-size:13px;padding-left:20px;'>{''.join(rows)}</ul>"
+    )
 
 
 def _trends_html(p: dict) -> str:
-    out = ["<h2>Trends (14d rolling)</h2>"]
-    for side, label in [("ai", "AI"), ("fin", "Fin")]:
+    out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
+           f"📈 Trends (14d rolling)</h2>"]
+    for side, label, emoji in [("ai", "AI", "🤖"), ("fin", "Fin", "🏦")]:
         trends = p.get(f"{side}_trends", {})
-        out.append(f"<h3>{label}</h3>")
-        for bucket, title in [
-            ("rising", "↑ Rising"),
-            ("new_emergence", "★ New"),
-            ("stable_hot", "→ Stable Hot"),
-            ("falling", "↓ Falling"),
+        all_items = []
+        for bucket, marker in [
+            ("rising", "↑"),
+            ("new_emergence", "★"),
+            ("stable_hot", "→"),
+            ("falling", "↓"),
         ]:
-            items = trends.get(bucket, []) if isinstance(trends, dict) else []
-            if not items:
-                continue
-            out.append(f"<p><b>{title}</b></p><ul>")
-            for it in items:
-                out.append(f"<li><code>{it.get('name','?')}</code> — {it.get('comment','')}</li>")
-            out.append("</ul>")
+            for it in (trends.get(bucket, []) or []):
+                all_items.append((marker, it.get("name", "?"), it.get("comment", "")))
+        if not all_items:
+            continue
+        out.append(f"<p style='margin:8px 0 4px 0;'><b>{emoji} {label}</b></p>")
+        out.append("<ul style='font-size:13px;padding-left:20px;margin:4px 0;'>")
+        for marker, name, comment in all_items[:8]:
+            out.append(f"<li><span style='color:#888;'>{marker}</span> "
+                       f"<code style='background:#f0f0f0;padding:1px 4px;border-radius:3px;'>{name}</code> "
+                       f"— {comment}</li>")
+        out.append("</ul>")
     return "\n".join(out)
 
 
 def _gaps_html(p: dict) -> str:
     eg = p.get("email_ready", [])
     if not eg:
-        return "<h2>Gaps (≥8)</h2><p><em>None today.</em></p>"
-    out = ["<h2>Gaps (email-ready, score ≥ 8)</h2>"]
+        return "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>Gaps</h2><p><em>No email-ready gaps today.</em></p>"
+    out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
+           f"⭐ Gaps ({len(eg)} email-ready, score ≥ 8)</h2>"]
     for item in eg:
-        g = item["gap"]
-        s = item["score"]
-        gid = g.get("_id", "?")
-        gtype = item["type"]
-        hyp = g.get("hypothesis", "?")
-        out.append(
-            f"<div style='border-left:4px solid #4080ff;padding:8px 12px;margin:12px 0;'>"
-            f"<p><b>[{gid}]</b> <span style='color:#888;'>({gtype})</span> "
-            f"total={s['total']} · novelty={s['novelty']} · actionability={s['actionability']}</p>"
-            f"<p><b>假设</b>: {hyp}</p>"
-        )
-
-        ctx = g.get("research_context") or {}
-        if ctx:
-            out.append("<div style='background:#f6f8fa;padding:8px 12px;border-radius:6px;margin:8px 0;'>")
-            if ctx.get("fin_current_state"):
-                out.append(f"<p style='margin:4px 0;'><b>🏦 Fin 当前进展</b>: {ctx['fin_current_state']}</p>")
-            if ctx.get("ai_frontier"):
-                out.append(f"<p style='margin:4px 0;'><b>🤖 AI 前沿</b>: {ctx['ai_frontier']}</p>")
-            if ctx.get("why_this_matters"):
-                out.append(f"<p style='margin:4px 0;'><b>⭐ 为什么这个 gap 值得做</b>: {ctx['why_this_matters']}</p>")
-            out.append("</div>")
-
-        if gtype == "engineering":
-            roadmap = g.get("experimental_roadmap", {}) or {}
-            out.append(f"<p><b>Data</b>: {roadmap.get('data','?')}</p>")
-            metrics = roadmap.get("metrics", {}) or {}
-            out.append(f"<p><b>Metrics</b>: primary={metrics.get('primary',[])}, secondary={metrics.get('secondary',[])}</p>")
-            baselines = roadmap.get("baselines", []) or []
-            if baselines:
-                out.append("<p><b>Baselines</b>: " +
-                           ", ".join(b.get("name", "?") for b in baselines) + "</p>")
-            out.append(f"<p><b>Effort</b>: {roadmap.get('estimated_effort','?')}</p>")
-        else:
-            ai = g.get("ai_anchor", {})
-            fin = g.get("fin_anchor", {})
-            out.append(f"<p><b>AI anchor</b>: {ai.get('concept','?')}</p>")
-            out.append(f"<p><b>Fin anchor</b>: {fin.get('description','?')[:200]}</p>")
-        out.append("</div>")
+        out.append(_gap_card_html(item))
     return "\n".join(out)
+
+
+def _gap_card_html(item: dict) -> str:
+    g = item["gap"]
+    s = item["score"]
+    gid = g.get("_id", "?")
+    gtype = item["type"]
+    hyp = g.get("hypothesis", "?")
+    type_color = "#0a6e3d" if gtype == "engineering" else "#5a3b8c"
+    type_bg = "#e6f4ea" if gtype == "engineering" else "#ede7f6"
+
+    out = [
+        f"<div style='border:1px solid #ddd;border-radius:8px;padding:14px 18px;"
+        f"margin:14px 0;background:#fff;'>",
+        # Header bar
+        f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>",
+        f"<span style='font-size:13px;color:#888;'>[{gid}] "
+        f"<span style='color:{type_color};background:{type_bg};padding:2px 8px;"
+        f"border-radius:3px;font-size:11px;'>{gtype.upper()}</span></span>",
+        f"<span style='font-size:13px;color:#444;'>"
+        f"<b>{s['total']}</b> "
+        f"<span style='color:#888;'>(nov {s['novelty']} · act {s['actionability']})</span></span>",
+        f"</div>",
+        # Hypothesis
+        f"<h3 style='margin:8px 0 4px 0;font-size:16px;line-height:1.35;'>{hyp}</h3>",
+    ]
+
+    # Research context block
+    ctx = g.get("research_context") or {}
+    if ctx:
+        out.append("<div style='background:#f6f8fa;padding:10px 14px;border-radius:6px;margin:10px 0;font-size:14px;'>")
+        if ctx.get("fin_current_state"):
+            out.append(f"<p style='margin:4px 0;'><b>🏦 Fin 当前</b>: {ctx['fin_current_state']}</p>")
+        if ctx.get("ai_frontier"):
+            out.append(f"<p style='margin:4px 0;'><b>🤖 AI 前沿</b>: {ctx['ai_frontier']}</p>")
+        if ctx.get("why_this_matters"):
+            out.append(f"<p style='margin:4px 0;'><b>⭐ Why this matters</b>: {ctx['why_this_matters']}</p>")
+        out.append("</div>")
+
+    # Type-specific details
+    if gtype == "engineering":
+        roadmap = g.get("experimental_roadmap", {}) or {}
+        out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Data</b>: {roadmap.get('data','?')}</p>")
+        metrics = roadmap.get("metrics", {}) or {}
+        out.append(
+            f"<p style='margin:8px 0;font-size:14px;'><b>Metrics</b>: "
+            f"primary={metrics.get('primary',[])} · "
+            f"secondary={metrics.get('secondary',[])}</p>"
+        )
+        baselines = roadmap.get("baselines", []) or []
+        if baselines:
+            out.append("<p style='margin:8px 0;font-size:14px;'><b>Baselines</b>: " +
+                       " · ".join(b.get("name", "?") for b in baselines) + "</p>")
+        out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Effort</b>: {roadmap.get('estimated_effort','?')}</p>")
+    else:
+        ai = g.get("ai_anchor", {})
+        fin = g.get("fin_anchor", {})
+        out.append(f"<p style='margin:8px 0;font-size:14px;'><b>AI anchor concept</b>: {ai.get('concept','?')}</p>")
+        out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Fin anchor</b>: {fin.get('description','?')[:300]}</p>")
+
+    # Related papers (the main addition)
+    related = g.get("_related_papers", {})
+    if related.get("ai") or related.get("fin"):
+        out.append("<div style='margin-top:12px;padding-top:10px;border-top:1px dashed #ccc;'>")
+        out.append("<p style='margin:4px 0;font-size:13px;color:#444;'><b>📚 Related work</b></p>")
+        if related.get("ai"):
+            out.append("<p style='margin:6px 0 2px 0;font-size:12px;color:#666;'>AI side</p><ul style='margin:2px 0;padding-left:20px;font-size:13px;'>")
+            for paper in related["ai"]:
+                out.append(_paper_li(paper))
+            out.append("</ul>")
+        if related.get("fin"):
+            out.append("<p style='margin:6px 0 2px 0;font-size:12px;color:#666;'>Fin side</p><ul style='margin:2px 0;padding-left:20px;font-size:13px;'>")
+            for paper in related["fin"]:
+                out.append(_paper_li(paper))
+            out.append("</ul>")
+        out.append("</div>")
+
+    out.append("</div>")
+    return "\n".join(out)
+
+
+def _paper_li(paper: dict) -> str:
+    title = (paper.get("title") or "?")[:120]
+    url = paper.get("url", "")
+    affil = paper.get("affiliation") or ""
+    method = paper.get("method") or ""
+    extra = " · ".join(x for x in [affil, method] if x)
+    extra_html = f"<br><span style='color:#888;font-size:11px;'>{extra}</span>" if extra else ""
+    return f"<li><a href='{url}' style='color:#0066cc;text-decoration:none;'>[{paper.get('id','?')}]</a> {title}{extra_html}</li>"
 
 
 def _mapping_actions_html(p: dict) -> str:
     actions = p.get("mapping_actions", [])
     if not actions:
         return ""
-    out = ["<h2>Mapping Actions (pending review)</h2><ul>"]
+    out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
+           f"🗺 Mapping Actions ({len(actions)} pending)</h2>"
+           f"<ul style='font-size:13px;padding-left:20px;'>"]
     for a in actions[:8]:
         atype = a.get("type", "?")
         reason = a.get("reason", "")
