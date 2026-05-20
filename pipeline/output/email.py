@@ -120,8 +120,10 @@ def _papers_html(p: dict) -> str:
 
 
 def _trends_html(p: dict) -> str:
+    wa = p.get("stats", {}).get("window_ai", 90)
+    wf = p.get("stats", {}).get("window_fin", 180)
     out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
-           f"📈 Trends (14d rolling)</h2>"]
+           f"📈 Trends (AI {wa}d · Fin {wf}d rolling)</h2>"]
     for side, label, emoji in [("ai", "AI", "🤖"), ("fin", "Fin", "🏦")]:
         trends = p.get(f"{side}_trends", {})
         all_items = []

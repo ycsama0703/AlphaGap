@@ -114,6 +114,8 @@ def run_daily(target_date: date | None = None,
             "cost_usd": round(
                 (ingest_stats.get("cost_usd", 0) or 0) + client.estimate_cost_usd(), 4
             ),
+            "window_ai": gap_result["context"].get("window_ai_days"),
+            "window_fin": gap_result["context"].get("window_fin_days"),
         },
         "top_papers": gap_result["context"]["ai_recent_papers"][:5] +
                       gap_result["context"]["fin_recent_papers"][:3],

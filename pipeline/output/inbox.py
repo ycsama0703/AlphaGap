@@ -78,7 +78,9 @@ def _section_top_papers(p: dict) -> str:
 
 
 def _section_trends(p: dict) -> str:
-    out = ["## Trends (14d rolling)"]
+    wa = p.get("stats", {}).get("window_ai", 90)
+    wf = p.get("stats", {}).get("window_fin", 180)
+    out = [f"## Trends (AI {wa}d · Fin {wf}d rolling)"]
     for side, label in [("ai", "AI"), ("fin", "Fin")]:
         trends = p.get(f"{side}_trends", {})
         out.append(f"\n### {label}")
