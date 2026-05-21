@@ -1,74 +1,378 @@
 # AlphaGap
 
-> AI × Fin gap detection. Where alpha lives.
+> AI × Fin gap detection · 每日扫描两侧前沿，自动产出可执行的研究 gap
 
-每日抓取 AI 与金融领域前沿论文，自动产出 AI→Fin 迁移的 gap 候选（理论型 + 工程型），通过邮件推送，并把可审批的 mapping 提议落到 git 仓库。
+---
 
-核心资产是 `mappings/` 和 `ideas/` 两份持续生长的 markdown 知识库——项目不是论文管理工具，是研究判断沉淀系统。
+## What this is
 
-## Quick Start
+AlphaGap 每天扫 AI 和金融两个领域的最新论文，自动发现"AI 已经做到了 X，金融领域还没用上 X"的研究 gap，通过邮件推送高分候选（含完整实验路线），并维护一份持续生长的 AI×Fin 知识映射库。
+
+**项目本质不是论文管理工具，而是研究判断沉淀系统**——核心资产是 `mappings/` + `briefs/` 两份持续生长的 markdown 知识库，DB 和论文都是可再生的派生数据。
+
+---
+
+## Current state (as of 2026-05-21)
+
+### Deployed
+- **服务器**：`luyao4` (`/home/ycliu0703/workspace/projects/alphagap`)
+- **GitHub**: <https://github.com/ycsama0703/AlphaGap>
+- **Cron**: 每天 WIB 07:00 (= 北京 08:00) 自动触发 `python -m pipeline.main daily --no-commit`
+- **日志**: `logs/daily.log`
+
+### DB 状态
+- ~2700 papers backfilled (HF Daily 90 天)
+- ~2150 L1 extracted, ~120 L2 extracted
+- ~2150 papers have S2 citation snapshots
+
+### 信号源
+- ✅ **HF Daily Papers** (AI 主源，工作正常)
+- ❌ **arXiv API**（持续 429 rate-limited，目前未投产）
+- ⏳ **SSRN** / **S2 search**（未实现）
+
+### 已知问题
+1. **arXiv 429** —— 致命：Fin 侧 q-fin 论文几乎抓不到，Fin trends 持续单薄。fix：换 OAI-PMH 接口 + 加 polite User-Agent
+2. **Server git push 未配置** —— 用 `--no-commit` 绕过，inbox.md 只在服务器本地，没自动 push 到 GitHub
+3. **Mappings 表为空** —— 还没有 human-approved 的 mappings 沉淀
+4. **Weekly report 未实现** —— `pipeline/main.py` 里 `run_weekly` 是 stub
+5. **Logs 无 rotation** —— 跑半年后需要手动 truncate
+
+---
+
+## Quick navigation
+
+| 想找什么 | 看哪 |
+|---|---|
+| 项目原理与设计动机 | 本 README 下面几节 |
+| Prompt 内容 | `prompts/01..09_*.md` |
+| 每日 pipeline 流程 | `pipeline/main.py` `run_daily()` |
+| DB 表结构 | `pipeline/db.py` SCHEMA 常量 |
+| 白名单 / 关键词 | `whitelist.yaml` |
+| 部署配置 | `deploy/cron.example` + 本 README "Deployment" 节 |
+| 历史决策（为什么这么设计） | 见下方 "Design decisions" 节 |
+
+---
+
+## Architecture
+
+### 单日流程（pipeline/main.py: run_daily）
+
+```
+Step 1   Ingest                  fetchers/* → filter → SQLite
+            ↓                    (今日 HF Daily 新论文 + L1 extract)
+Step 1.5 Citation snapshot       S2 batch API → citation_snapshots 表
+            ↓                    (所有 DB 论文当日 citation 数)
+Step 2   Gap pipeline            analyze/gaps.py:run_gap_pipeline
+            ↓
+         ├─ Trends               Prompt 03 × 2 (AI 90d / Fin 180d)
+         ├─ Theoretical gaps     Prompt 04
+         ├─ Engineering gaps     Prompt 05 (可升级理论型)
+         ├─ Self-check           Prompt 06 (11 项 checklist)
+         └─ Scoring              Prompt 07 (novelty + actionability)
+            ↓
+Step 2.5 Enrich gaps             从 DB 查 anchor papers 完整信息
+            ↓
+Step 3   Deep briefs             Prompt 09 (仅对 score ≥ 8 的 gap)
+            ↓                    → briefs/YYYY-MM-DD-GAPID.md
+Step 4   Mapping update          Prompt 08 → 状态变更 / 新建提议
+            ↓
+Step 5   Inbox markdown          inbox/YYYY-MM-DD.md (审批用)
+            ↓
+Step 6   Email                   Resend HTML digest → yuncongliu0703@gmail.com
+```
+
+### 文件树（重要的）
+
+```
+alphagap/
+├── prompts/                       LLM 角色定义，每个文件一个独立任务
+│   ├── 01_concept_extract_l1.md   必抽：method_primary / domain / tags / side
+│   ├── 02_concept_extract_l2.md   高优先级加抽：building_blocks / claims / benchmarks
+│   ├── 03_trend_summary.md        rising/falling/new/stable_hot 分类
+│   ├── 04_gap_theoretical.md      conceptual hypothesis（无实验路线）
+│   ├── 05_gap_engineering.md      含完整实验路线（data/method/metrics/baselines/...）
+│   ├── 06_gap_self_check.md       11 项 checklist → accept/reject/downgrade/retry
+│   ├── 07_gap_scoring.md          novelty + actionability 各 1-10
+│   ├── 08_mapping_update.md       status_change / add_mapping / add_evidence 提议
+│   └── 09_gap_deep_brief.md       8 章节 markdown brief（自包含，可直接交给 agent）
+│
+├── pipeline/                      代码
+│   ├── config.py                  load_settings / load_whitelist / load_prompt
+│   ├── db.py                      SQLite schema + upserts + queries
+│   ├── llm_client.py              DeepSeek 客户端（OpenAI 兼容接口）+ token 计费
+│   ├── filter.py                  候选信号 (HF / q-fin / 作者 / 机构 / 关键词)
+│   ├── ingest.py                  端到端 ingest: fetch → filter → persist → L1/L2
+│   ├── main.py                    每日 cron 入口
+│   │
+│   ├── fetchers/
+│   │   ├── arxiv.py               arXiv Atom API（含 retry，但 429 限制严）
+│   │   ├── hf_daily.py            HuggingFace Daily Papers API
+│   │   ├── semantic_scholar.py    S2 batch citation lookup
+│   │   └── ssrn.py                STUB（未实现）
+│   │
+│   ├── extract/
+│   │   └── concepts.py            Prompt 01/02 + prompt md 解析器 + render_template
+│   │
+│   ├── analyze/
+│   │   ├── citations.py           S2 daily snapshot + concept-level velocity 聚合
+│   │   ├── context.py             从 DB 取 top papers / mappings 给 prompts
+│   │   ├── trends.py              Prompt 03 + 概念频率聚合（AI 90d / Fin 180d）
+│   │   ├── gaps.py                Prompt 04/05 + orchestrator (run_gap_pipeline)
+│   │   ├── self_check.py          Prompt 06 + downgrade helper
+│   │   ├── scoring.py             Prompt 07 + EMAIL_THRESHOLD=8
+│   │   ├── enrich.py              用 DB 给 gap 的 anchor papers 加 title/url/affil
+│   │   ├── brief.py               Prompt 09 + 写 briefs/YYYY-MM-DD-GAPID.md
+│   │   └── mapping_update.py      Prompt 08 + 动作合法性校验
+│   │
+│   └── output/
+│       ├── inbox.py               写 inbox/YYYY-MM-DD.md (审批用，全量 audit)
+│       ├── email.py               Resend HTML 邮件
+│       └── report.py              STUB（weekly 未实现）
+│
+├── whitelist.yaml                 机构/作者/关键词白名单 + 阈值
+├── db/alphagap.sqlite             SQLite（gitignored）
+├── mappings/                      AI↔Fin 知识映射（核心资产，手动审批）
+├── briefs/                        每个高分 gap 的 deep brief md
+├── inbox/                         每日 audit + 待审批 actions
+├── logs/                          运行日志
+└── deploy/cron.example            crontab 模板
+```
+
+---
+
+## Design decisions（为什么这么设计）
+
+### 1. 两类 gap 严格区分
+- **理论型 (theoretical)**: 偏 conceptual hypothesis，启发研究方向。LLM 可以飞，自检宽松。
+- **工程型 (engineering)**: 必须自带完整实验路线（data + method + metrics + baselines + ablations）。LLM 想不清楚就降级为理论型，不允许"漂亮但飘"。
+
+理由：纯理论 gap 每天能生成无限条没有用，工程型才是真正交给人/AI 执行的研究 task spec。
+
+### 2. 邮件不是 digest，是分流入口
+- 邮件只放 score ≥ 8 的"email-ready" gap（精读层）
+- inbox.md 全量 audit（审批层）
+- briefs/*.md 每个高分 gap 独立深度文档（onboarding 层）
+
+理由：邮件每天 1 封，太密集人会麻木。分层让"扫描-决策-深入"三个动作分开。
+
+### 3. 非对称观察窗口
+- AI 侧 90 天（覆盖一个会议周期）
+- Fin 侧 180 天（金融发表节奏慢）
+
+理由：14 天对 AI 都嫌窄，对 Fin 是噪声。两侧 publication cadence 本质不同，必须不对称。
+
+### 4. Citation velocity 作为补强信号
+- 单纯 paper count 增长 = "更多人在写"（可能是 hype）
+- citation_velocity_30d 高 = "工作真在被引用"（已被认真使用）
+- 两者都高 = 真热点
+
+S2 daily snapshot 提供这个信号（free tier 够用）。
+
+### 5. Mappings 表必须人审
+- LLM 提议永远进 `inbox/` 等审批
+- 人确认后才动 `mappings/`
+- 即使 audit 通过，每条动作也走 git commit 留痕
+
+理由：mappings 是项目唯一不可再生的资产，污染了就完了。
+
+### 6. 资产层级
+- **L1**（不可再生）：`mappings/` + `briefs/` markdown + git 历史
+- **L2**（派生）：`db/*.sqlite` concepts / reports
+- **L3**（缓存）：`db/*.sqlite` papers（丢了重抓）
+- **L4**（不存）：PDF / 网页原文
+
+理由：备份和保护策略按层级走，避免误删核心资产。
+
+### 7. DeepSeek 主导 + S2 / HF API 辅助
+- DeepSeek-chat (V3.5) 做所有 LLM 推理 (~$0.05/天)
+- DeepSeek-reasoner (R1) 是预留，目前未实际触发
+- 不引入 embedding（语义相似度 DeepSeek 直接判断已够用）
+
+理由：成本可控，质量稳定。哪天质量不够再混 Claude。
+
+---
+
+## Daily user workflow
+
+### 你需要做的（每天）
+1. **8:00 北京时间**收邮件 (`yuncongliu0703@gmail.com`)
+2. 邮件里看 score ≥ 8 的 gap，决定值不值得 dive in
+3. 想深入：`ssh luyao4 cat ~/workspace/projects/alphagap/briefs/YYYY-MM-DD-GAPID.md`
+4. 想完整 audit：`ssh luyao4 cat ~/workspace/projects/alphagap/inbox/YYYY-MM-DD.md`
+
+### Mapping 审批流（手动，目前还没用过）
+1. inbox.md 里看 LLM 提议的 `add_mapping` / `status_change` 动作
+2. 同意的：手动建/改 `mappings/<id>-<slug>.md` 文件，frontmatter 包含 id / ai_concept / fin_concept / status
+3. `git add . && git commit -m "review YYYY-MM-DD" && git push`
+4. 服务器下次跑会用最新 mappings 作为 context
+
+### 想现在就触发一次
+```bash
+ssh luyao4
+cd ~/workspace/projects/alphagap
+.venv/bin/python -m pipeline.main daily --no-commit
+```
+
+---
+
+## Configuration
+
+### `whitelist.yaml`
+- **institutions**: ai_industry / ai_academia / fin_industry / fin_academia
+- **named_authors_fin**: Fin big-names 个人白名单（不依赖机构匹配）
+- **keywords**: ai_side / fin_side 分组，多组 keyword
+- **thresholds**: h_index_ai / h_index_fin / llm_relevance（h_index 实际未使用，待 S2 author enrichment）
+
+### `.env`（不进 git，每台机器独立）
+```
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL_DEFAULT=deepseek-chat       # 必须 chat，不要默认 reasoner（贵 5-10x）
+DEEPSEEK_MODEL_REASONING=deepseek-reasoner
+RESEND_API_KEY=re_...
+EMAIL_FROM=onboarding@resend.dev           # Resend 测试地址（不需要域名验证）
+EMAIL_TO=yuncongliu0703@gmail.com          # 必须是 Resend 注册账号邮箱
+ALPHAGAP_DB_PATH=db/alphagap.sqlite
+```
+
+### `prompts/*.md`
+每个 prompt md 文件结构必须包含两段：
+```markdown
+## System Prompt
+```
+<system text>
+```
+
+## User Prompt Template
+```
+<user text with {placeholders}>
+```
+```
+代码用 `pipeline/extract/concepts.py:parse_prompt()` 解析。
+
+---
+
+## Database schema
+
+详见 `pipeline/db.py` SCHEMA 常量。核心表：
+
+| 表 | 内容 | 层级 |
+|---|---|---|
+| `papers` | 论文元数据（标题/摘要/作者/分类） | L3 |
+| `paper_extractions` | L1/L2 LLM 抽取结果 | L2 |
+| `paper_signals` | 候选信号 (HF / q-fin / 关键词 / 作者) + priority_score | L2 |
+| `citation_snapshots` | S2 每日 citation 数快照 (paper_id, date, count) | L2 |
+| `concepts` | 标准化概念实体（**目前未使用**，trends 直接聚合 JSON） | - |
+| `paper_concepts` | paper × concept 多对多（**目前未使用**） | - |
+| `daily_runs` | pipeline 执行日志（**目前未使用**） | - |
+
+---
+
+## Cost
+
+| 项 | 频率 | 成本 |
+|---|---|---|
+| DeepSeek API | 每日 ~50-100 calls | ~$0.05-0.10/天 |
+| Resend | 每日 1 封 | 免费（< 3000/月） |
+| S2 API | 每日 1 batch | 免费（1 RPS） |
+| 服务器 | luyao4 已有 | $0 |
+| **合计** | | **~$15-25/年** |
+
+一次性 backfill ~$0.8（已花在 5/20）。
+
+---
+
+## Roadmap
+
+### 短期（优先级高）
+- [ ] **修 arXiv 429**：换 OAI-PMH 接口 + polite User-Agent → 解锁 Fin 侧抓取
+- [ ] **First mapping seed**：手动建 5-10 个 mappings 作为种子，让 LLM 后续 add_mapping 提议有上下文
+
+### 中期
+- [ ] **Weekly report**：`run_weekly()` 实现，周末邮件汇总 mapping 表变化、本周 gap top 5
+- [ ] **Server git push**：服务器配 GitHub SSH key 或 HTTPS token，让 inbox 自动推到 git
+- [ ] **Log rotation**：logrotate 配置或 cron 自动 truncate
+
+### 长期
+- [ ] **Author h-index enrichment**：S2 author batch API 拉 h-index，激活白名单的 h-index 阈值规则
+- [ ] **Embedding-based gap detection**：当 LLM 漏掉语义级 gap 时再加（目前不需要）
+- [ ] **Lumid 集成**：把 gap pipeline 作为 Lumid loop 跑（看 [[project_lqa_showcase_step_b]] 那条线）
+
+---
+
+## Local development
 
 ```bash
-# 1. 装依赖
-pip install -r requirements.txt
-
-# 2. 配置环境
+# Mac 本地（开发用）
+git clone https://github.com/ycsama0703/AlphaGap.git
+cd alphagap
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 cp .env.example .env
-# 编辑 .env 填入 DEEPSEEK_API_KEY、RESEND_API_KEY 等
+# 编辑 .env
 
-# 3. 初始化数据库
-make init-db
-
-# 4. 跑一次 dry-run（不发邮件、不写 inbox，只 stdout）
-make dry-run
-
-# 5. 生产模式跑每日
-make daily
+.venv/bin/python -m pipeline.db init
+.venv/bin/python -m pipeline.main daily --dry-run --no-commit
 ```
 
-## 架构
+### 单组件调试
+```bash
+# 只抓 arxiv
+.venv/bin/python -m pipeline.fetchers.arxiv cs.LG q-fin.PM
 
-```
-fetchers/       数据抓取 (HF Daily / arXiv / SSRN / S2)
-   ↓
-extract/        概念抽取 (LLM Layer 1/2)
-   ↓
-db (SQLite)     papers + concepts 持久化
-   ↓
-analyze/        Trend 总结 → Gap 生成 → 自检 → 评分 → Mapping 更新
-   ↓
-output/         邮件推送 + inbox markdown patch + 周报
-```
+# 只抓 HF Daily
+.venv/bin/python -m pipeline.fetchers.hf_daily 2026-05-20
 
-## 数据流
+# 测一篇论文的 L1/L2
+.venv/bin/python -m pipeline.extract.concepts cs.LG q-fin.PM
 
-- **L1 资产**（不可再生）：`mappings/` + `ideas/` markdown，git 跟踪
-- **L2 派生**：`db/alphagap.sqlite` 的 concepts/reports
-- **L3 缓存**：`db/alphagap.sqlite` 的 papers（丢了可重抓）
-- **L4 不存**：PDF / 网页原文
+# 测 trends
+.venv/bin/python -m pipeline.analyze.trends ai --window 90 --end-date 2026-05-20
 
-## 配置
+# 测完整 gap pipeline
+.venv/bin/python -m pipeline.analyze.gaps --full --end-date 2026-05-20
 
-- `whitelist.yaml` — 机构/作者/数据源白名单 + 关键词 + 阈值
-- `prompts/` — 8 个 LLM prompt 定义
-- `.env` — API keys 和路径
+# Citation snapshot (S2)
+.venv/bin/python -m pipeline.analyze.citations snapshot
 
-## 审批工作流
-
-```
-服务器 cron 每日跑 → 写 inbox/yyyy-mm-dd.md → git commit & push
-   ↓
-你本地 git pull → 编辑 inbox/yyyy-mm-dd.md（accept / reject / modify）
-   ↓
-将通过的 mapping action apply 到 mappings/ → git commit & push
-   ↓
-服务器下次跑时读最新 mappings 作为 context
+# 看 DB 当前状态
+.venv/bin/python -m pipeline.db stats
 ```
 
-## 部署
+---
 
-参考 `deploy/cron.example`（待补）。
+## Deployment notes
 
-## License
+服务器已部署，配置详见上方 "Current state"。
 
-私有项目。
+### 重新部署（如果换服务器）
+```bash
+ssh new-server
+cd ~/workspace/projects  # 或类似路径
+git clone https://github.com/ycsama0703/AlphaGap.git alphagap
+cd alphagap
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+mkdir -p logs
+
+cp .env.example .env
+nano .env  # 填 DEEPSEEK_API_KEY, RESEND_API_KEY 等
+
+.venv/bin/python -m pipeline.db init
+.venv/bin/python -m pipeline.main daily --dry-run --no-commit  # 验证
+
+# 装 cron（替换路径为实际）
+crontab -e
+# 加: 0 <hour> * * * cd <project-path> && <venv>/bin/python -m pipeline.main daily --no-commit >> <project-path>/logs/daily.log 2>&1
+```
+
+### 时区
+- 服务器 luyao4 是 **WIB** (UTC+7)
+- Cron `0 7 * * *` = 北京时间 08:00（推荐）
+
+---
+
+## License & Privacy
+
+私有项目。`.env` 含 API key，绝不进 git。`db/` 也不进 git（每台机器独立）。
+
+`mappings/` + `briefs/` + `inbox/` + `prompts/` + `whitelist.yaml` 是 git 跟踪的核心内容。
