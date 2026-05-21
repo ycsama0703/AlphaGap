@@ -17,6 +17,14 @@
 A. anchor_validity: anchor 的 paper_id 是否在输入的有效论文 ID 集合中（pipeline 提供）
 B. duplication: 该 gap 是否与现有 mappings 中 status != "refuted" 的条目重复（语义相似度判断）
 C. specificity: hypothesis 是否具体（≤ 80 字、不含"AI 可以帮助金融"这类空话）
+L. structural_match: structural_mapping 是否填写且 mismatch_severity 不为 "high"
+   - 缺 structural_mapping → fail
+   - mismatch_severity="high" 且 bridge 不可信 → fail（致命）
+   - mismatch_severity="high" 但 bridge 详细 → 工程型降级为理论型
+M. no_brand_in_hypothesis: hypothesis / ai_anchor.concept 含 AI 论文品牌方法名 → fail（致命）
+   - 判定：name 是否出现在 ai_recent_papers 任一 method_primary 列表里
+   - hypothesis 应是【功能层描述】，不是【品牌嫁接】
+   - 品牌名只能在 ai_anchor.paper_id 引用证据中出现
 
 理论型专属检查：
 D. reasoning_depth: reasoning_chain 是否 ≥ 3 步且每步有信息量
@@ -35,8 +43,8 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
 2. 每项检查输出 pass: true/false 和 reason（不通过时必填，≤ 30 字）
 3. 给出 overall_verdict：
    - "accept": 所有相关检查都 pass
-   - "reject": A 或 B 不通过（致命问题）
-   - "downgrade": 工程型未通过 F-K 中任一，但通用检查通过 → 降级为理论型
+   - "reject": A / B / M 不通过，或 L 显示 mismatch=high + bridge 不可信（致命）
+   - "downgrade": 工程型未通过 F-K 任一，或 L 显示要降级 → 降级为理论型
    - "retry": 通用检查通过，但其他可修复字段失败（如 reasoning_chain 浅但 anchor 合法），建议重生成
 4. 客观判断，不要找借口让 gap 通过
 ```
@@ -68,6 +76,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "B_duplication": {"pass": bool, "reason": string},
     "C_specificity": {"pass": bool, "reason": string},
     "L_structural_match": {"pass": bool, "reason": string},
+    "M_no_brand_in_hypothesis": {"pass": bool, "reason": string},
     "D_reasoning_depth": {"pass": bool, "reason": string} | null,   // 理论型才填
     "E_evidence_for_gap": {"pass": bool, "reason": string} | null,
     "F_data_concrete": {"pass": bool, "reason": string} | null,     // 工程型才填
@@ -91,6 +100,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "B_duplication": {"pass": true, "reason": ""},
     "C_specificity": {"pass": true, "reason": ""},
     "L_structural_match": {"pass": true, "reason": ""},
+    "M_no_brand_in_hypothesis": {"pass": true, "reason": ""},
     "D_reasoning_depth": null,
     "E_evidence_for_gap": null,
     "F_data_concrete": {"pass": true, "reason": ""},

@@ -67,6 +67,15 @@ pipeline 调用前聚合：
 - 你的 gap 必须用 fin_uptake 作 ground truth，不要凭感觉判断"Fin 没用过"
 - 如果 fin_uptake 显示 explored 但你坚持是 gap，必须在 why_open_gap 解释为什么仍是 gap（如：角度不同 / 子领域不同）
 
+【机制层面 vs 品牌层面】（最重要的硬规则）：
+- ai_recent_papers 现在每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`
+- ai_trends 是 mechanism families（每条带 representative_one_liner / shared_approach / contrast_to_prior）
+- **hypothesis 禁止出现 AI 论文的品牌方法名**（FIPO / CEPO / Reflexion / RecursiveMAS 等）
+  ✅ 用功能描述："用未来 distribution 变化作密集 credit signal 改进因子衰减检测"
+  ❌ 用品牌名："用 FIPO 改进因子衰减"
+- 论文品牌名只能出现在 ai_anchor.paper_id 引用证据中
+- 同样禁止在 ai_anchor.concept 字段填品牌名，要填功能描述（< 60 字）
+
 输出原则：
 1. 严格 JSON，无前后缀
 2. 每条 gap 必须包含：

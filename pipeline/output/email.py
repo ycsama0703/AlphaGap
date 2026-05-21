@@ -123,27 +123,52 @@ def _trends_html(p: dict) -> str:
     wa = p.get("stats", {}).get("window_ai", 90)
     wf = p.get("stats", {}).get("window_fin", 180)
     out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
-           f"📈 Trends (AI {wa}d · Fin {wf}d rolling)</h2>"]
+           f"📈 Mechanism Trends (AI {wa}d · Fin {wf}d rolling)</h2>"]
     for side, label, emoji in [("ai", "AI", "🤖"), ("fin", "Fin", "🏦")]:
         trends = p.get(f"{side}_trends", {})
-        all_items = []
-        for bucket, marker in [
-            ("rising", "↑"),
-            ("new_emergence", "★"),
-            ("stable_hot", "→"),
-            ("falling", "↓"),
+        any_content = False
+        out.append(f"<p style='margin:12px 0 4px 0;'><b>{emoji} {label}</b></p>")
+        for bucket, marker, bcolor in [
+            ("rising", "↑ Rising", "#0a6e3d"),
+            ("new_emergence", "★ New emergence", "#0066cc"),
+            ("stable_hot", "→ Stable hot", "#888"),
+            ("falling", "↓ Falling", "#c0392b"),
         ]:
-            for it in (trends.get(bucket, []) or []):
-                all_items.append((marker, it.get("name", "?"), it.get("comment", "")))
-        if not all_items:
-            continue
-        out.append(f"<p style='margin:8px 0 4px 0;'><b>{emoji} {label}</b></p>")
-        out.append("<ul style='font-size:13px;padding-left:20px;margin:4px 0;'>")
-        for marker, name, comment in all_items[:8]:
-            out.append(f"<li><span style='color:#888;'>{marker}</span> "
-                       f"<code style='background:#f0f0f0;padding:1px 4px;border-radius:3px;'>{name}</code> "
-                       f"— {comment}</li>")
-        out.append("</ul>")
+            items = trends.get(bucket, []) or []
+            if not items:
+                continue
+            any_content = True
+            out.append(f"<p style='margin:8px 0 4px 0;font-size:13px;color:{bcolor};'><b>{marker}</b></p>")
+            for it in items[:6]:
+                name = it.get("name", "?")
+                problem = it.get("what_problem", "")
+                contrast = it.get("contrast_to_prior", "")
+                members = it.get("member_papers", []) or []
+                cv = it.get("citation_velocity_30d", 0)
+                affs = it.get("representative_affiliations", []) or []
+                growth = it.get("growth_pct", 0)
+                out.append(
+                    f"<div style='border-left:3px solid {bcolor};padding:6px 12px;margin:6px 0;background:#fafbfc;'>"
+                    f"<p style='margin:2px 0;font-size:14px;'><b>{name}</b></p>"
+                )
+                if problem:
+                    out.append(f"<p style='margin:2px 0;font-size:12px;color:#555;'><b>问题</b>: {problem}</p>")
+                if contrast:
+                    out.append(f"<p style='margin:2px 0;font-size:12px;color:#555;'><b>vs prior</b>: {contrast}</p>")
+                stats_bits = []
+                if members:
+                    stats_bits.append(f"{len(members)} papers")
+                if cv:
+                    stats_bits.append(f"+{cv} cites/30d")
+                if growth:
+                    stats_bits.append(f"{growth:+.0f}%")
+                if affs:
+                    stats_bits.append(", ".join(affs[:3]))
+                if stats_bits:
+                    out.append(f"<p style='margin:2px 0;font-size:11px;color:#888;'>{' · '.join(stats_bits)}</p>")
+                out.append("</div>")
+        if not any_content:
+            out.append(f"<p style='font-size:13px;color:#999;'><em>No data in window yet.</em></p>")
     return "\n".join(out)
 
 

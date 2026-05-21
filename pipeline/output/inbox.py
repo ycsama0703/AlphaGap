@@ -80,24 +80,44 @@ def _section_top_papers(p: dict) -> str:
 def _section_trends(p: dict) -> str:
     wa = p.get("stats", {}).get("window_ai", 90)
     wf = p.get("stats", {}).get("window_fin", 180)
-    out = [f"## Trends (AI {wa}d · Fin {wf}d rolling)"]
+    out = [f"## Mechanism Trends (AI {wa}d · Fin {wf}d rolling)"]
     for side, label in [("ai", "AI"), ("fin", "Fin")]:
         trends = p.get(f"{side}_trends", {})
         out.append(f"\n### {label}")
         for bucket, title in [
             ("rising", "↑ Rising"),
-            ("new_emergence", "★ New"),
-            ("stable_hot", "→ Stable Hot"),
+            ("new_emergence", "★ New emergence"),
+            ("stable_hot", "→ Stable hot"),
             ("falling", "↓ Falling"),
         ]:
             items = trends.get(bucket, []) if isinstance(trends, dict) else []
             if not items:
                 continue
-            out.append(f"\n**{title}**")
+            out.append(f"\n**{title}**\n")
             for it in items:
                 name = it.get("name", "?")
-                comment = it.get("comment", "")
-                out.append(f"- `{name}` — {comment}")
+                problem = it.get("what_problem", "")
+                contrast = it.get("contrast_to_prior", "")
+                rep = it.get("representative_one_liner", "")
+                members = it.get("member_papers", []) or []
+                cv = it.get("citation_velocity_30d", 0)
+                affs = it.get("representative_affiliations", []) or []
+                out.append(f"#### {name}\n")
+                if rep:
+                    out.append(f"- **代表性表述**: {rep}")
+                if problem:
+                    out.append(f"- **问题**: {problem}")
+                if contrast:
+                    out.append(f"- **vs prior**: {contrast}")
+                stats_bits = []
+                if members:
+                    stats_bits.append(f"{len(members)} papers ({', '.join(members[:5])})")
+                if cv:
+                    stats_bits.append(f"+{cv} cites/30d")
+                if affs:
+                    stats_bits.append(", ".join(affs[:3]))
+                if stats_bits:
+                    out.append(f"- _{ ' · '.join(stats_bits)}_\n")
     return "\n".join(out)
 
 

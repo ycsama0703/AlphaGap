@@ -1,131 +1,166 @@
-# Prompt 03: Trend Summary（每日跑，分 AI/Fin 两侧各跑一次）
+# Prompt 03: Mechanism-Level Trend Summary
 
-**用途**：拿 concept 频率统计表（最近 14 天 vs 前 14 天），让 LLM 输出方向升降的人类可读总结。
+**用途**：从近 90/180 天窗口内的论文 `mechanism_description` 列表中**动态聚类出 mechanism families**，每个 family 给出代表性功能描述、变体论文、解决的问题、与前作对比。
 
 **模型建议**：DeepSeek-V3.5  
-**温度**：0.2（轻微解释空间）  
-**预期输出长度**：~500 tokens
+**温度**：0.2  
+**预期输出长度**：~1500-2500 tokens
 
 ---
 
-## 上游数据准备（pipeline 算好再喂给 LLM）
+## 核心理念
 
-pipeline 在调用前应已聚合好：
+**不要 tag 级别的概念（"agent", "RL", "RLVR"）**——这种 trend 等于没说。
+
+要 **mechanism family 级别**——一族解决类似抽象问题、用类似机制的工作。比如：
+
+```
+mechanism family: "Dense per-step credit assignment from policy distribution shifts"
+  papers: [FIPO 2605.19835, KL-Advantage 2603.x, DenseAdv 2604.y]
+  representative_one_liner: "用 future-KL 散度作为 per-token advantage 信号"
+  what_problem: "长程序列 RL 中 trajectory-level reward 太稀疏导致 credit assignment 失败"
+  shared_approach: "都基于'未来 distribution 变化'构造密集 reward signal"
+  contrast_to_prior: "比 trajectory-level REINFORCE 更密集；不像 PRM 需要人工标注"
+```
+
+这才是 trend 的目标分辨率。
+
+---
+
+## 上游数据准备
+
+pipeline 把窗口内每篇 paper 的 mechanism_description 收集成列表喂入：
 
 ```json
 {
   "side": "ai",
-  "window_recent": "2026-05-07 to 2026-05-20",
-  "window_prior":  "2026-04-23 to 2026-05-06",
-  "concepts": [
+  "window_recent": "2026-03-01 to 2026-05-30",
+  "window_prior":  "2025-12-01 to 2026-02-28",
+  "papers": [
     {
-      "name": "verifier-based self-correction",
-      "count_recent": 12,
-      "count_prior": 4,
-      "growth_pct": 200,
+      "paper_id": "2605.19835",
+      "mechanism": {
+        "one_liner": "用未来 KL 散度作为 per-token advantage 信号",
+        "what_problem": "长程 RL trajectory-level reward 太稀疏",
+        "contrast": "比 REINFORCE 更密集；不需要 PRM 人工标注",
+        "prerequisites": "模型输出 distributional logits"
+      },
+      "publication_date": "2026-05-20",
+      "in_recent_window": true,
       "citation_velocity_30d": 142,
-      "first_seen": "2026-04-15",
-      "representative_papers": [
-        {"title": "...", "arxiv_id": "2605.xxxxx", "affiliation": "DeepMind"}
-      ]
+      "affiliation": "DeepMind",
+      "method_primary": ["FIPO"]
     },
     ...
   ]
 }
 ```
 
-仅传入近 14 天出现 ≥ 3 次的 concept（否则噪声太多）。
+最多 100 篇（按 priority desc 截取），保持 prompt 大小可控。
+
+---
 
 ## System Prompt
 
 ```
-你是一个学术趋势分析助手。给定某个领域（AI 或 Fin）的概念出现频率统计，请输出方向升降的简洁总结。
+你是 AI / Fin 学术趋势分析师。任务：从 papers 列表的 mechanism_description 中【动态识别 mechanism families】并分类升降。
 
-输出原则：
-1. 严格 JSON，无任何前后缀
-2. 分四类：rising / falling / new_emergence / stable_hot
-   - rising: growth_pct ≥ 50% 且 count_recent ≥ 5
-     【加强信号】若 citation_velocity_30d ≥ 50，更确信是 rising（社区真在用）
-   - falling: growth_pct ≤ -40% 且 count_prior ≥ 5
-     【加强信号】若 citation_velocity_30d 也低（≤ 5），降温更可靠
-   - new_emergence: first_seen 在 window_recent 内 且 count_recent ≥ 3
-   - stable_hot: count_recent ≥ 10 且 |growth_pct| < 30%
-3. 关键区分（两个信号叠加才是真信号）：
-   - paper count 增长 = "更多人在写"（可能 hype）
-   - citation_velocity_30d 高 = "工作真在被引用"（已认真使用）
-   - 两者都高 → 真热点；只 paper count 高 → 仍在 hype 阶段；只 citation 高 → 经典 revisit
-3. 每类最多 5 条
-4. 每条 concept 配一句【为什么值得关注】的简评（≤ 30 字）
-   - 简评要点：技术性质（是新方法还是旧方法变种？）、生态信号（来自哪些机构？）
-   - 不要复述 count 数字（pipeline 会显示）
-5. 如果某分类下没有合格项，返回空数组
-
-正面例子：
-{
-  "name": "verifier-based self-correction",
-  "comment": "Reflexion 思路的工业化版本，DeepMind/OpenAI 同期发力"
-}
-
-反面例子（避免）：
-{
-  "name": "verifier-based self-correction",
-  "comment": "近期出现 12 篇，增长 200%"   ← 重复 pipeline 已有数据
-}
+【核心要求】
+1. 严格 JSON，无前后缀
+2. 你的输出单位是 **mechanism family**，不是 paper、不是 tag。
+   - 不要输出 "agent" / "RL" / "RLVR" 这种 1-2 词 tag
+   - 必须输出 ≥ 30 字的功能描述，类似 "用未来 KL 散度作为 per-token advantage 信号"
+3. 聚类逻辑：
+   - 两篇 paper 的 mechanism 如果【解决同类抽象问题】+【用同类机制】→ 同一 family
+   - 即使方法品牌名不同（FIPO vs KL-Advantage），机制相同就聚一起
+   - 同一 paper 可贡献多个 family（如果它涉及多个机制创新）
+4. 一个 family 至少 2 篇 paper（单篇不算 trend，归入 "new_emergence"）
+5. 每个 family 必须包含：
+   - name: 描述性短句（35-80 字），命名核心机制+解决的问题
+       ✅ "Dense per-step credit assignment via policy distribution shift signals"
+       ✅ "Multi-agent failure attribution with cross-agent gradient tracing"
+       ❌ "Agent"  ← 太短
+       ❌ "Use of RL for code"  ← 没说清机制
+   - representative_one_liner: 选一个最有代表性的 paper 的 one_liner 作样本
+   - what_problem: family 共同解决的抽象问题
+   - shared_approach: family 共同的核心机制（≤ 60 字）
+   - contrast_to_prior: 这族相对前作 / 主流做法多了什么
+   - member_papers: [paper_id, ...]
+   - paper_count_recent: family 在 recent window 出现的 paper 数
+   - paper_count_prior: 同上 in prior window
+   - growth_pct: (recent - prior) / prior * 100 (or 999 if prior=0)
+   - citation_velocity_30d: sum across member papers
+   - representative_affiliations: top 3 unique
+6. 分 4 类（同时给 reason 字段）：
+   - rising: paper_count_recent ≥ 3 且 growth_pct ≥ 50%
+     【加强】citation_velocity_30d ≥ 50 → 更确信
+   - falling: paper_count_prior ≥ 5 且 growth_pct ≤ -40%
+   - new_emergence: family 首次出现在 recent window（prior=0）且 recent ≥ 2
+     （单篇 paper 也可入 new_emergence，标记为 isolated=true）
+   - stable_hot: paper_count_recent ≥ 5 且 |growth_pct| < 30%
+7. 每类最多 6 个 family。质量优先，宁缺勿滥。
+8. **不要输出原 paper 的 mechanism.one_liner 作 name** —— name 必须是你聚类后的抽象描述
 ```
 
 ## User Prompt Template
 
 ```
-分析以下 {side} 领域的概念趋势。
+分析以下 {side} 领域 papers 的 mechanism_descriptions，动态识别 mechanism families 并分类。
 
 【时间窗口】
-近期：{window_recent}（14 天）
-对比：{window_prior}（14 天）
+近期: {window_recent}（recent）
+对比: {window_prior}（prior）
 
-【概念统计】（已按 growth_pct 降序）
-{concepts_json}   # 上文 JSON 结构，仅 count_recent ≥ 3 的 concept
+【papers 数据（最多 100 篇）】
+{papers_json}
 
-请输出趋势分类与简评。Schema:
+输出严格 JSON：
 {
-  "rising": [{"name": string, "comment": string}],
-  "falling": [{"name": string, "comment": string}],
-  "new_emergence": [{"name": string, "comment": string}],
-  "stable_hot": [{"name": string, "comment": string}]
+  "rising": [
+    {
+      "name": string,                          // 描述性 mechanism family 名（35-80 字）
+      "representative_one_liner": string,
+      "what_problem": string,
+      "shared_approach": string,
+      "contrast_to_prior": string,
+      "member_papers": [string],
+      "paper_count_recent": int,
+      "paper_count_prior": int,
+      "growth_pct": float,
+      "citation_velocity_30d": int,
+      "representative_affiliations": [string],
+      "isolated": bool                          // true 表示仅 1 篇 paper（仅 new_emergence 可能）
+    }
+  ],
+  "falling":       [...],
+  "new_emergence": [...],
+  "stable_hot":    [...]
 }
 ```
 
-## Output Schema
+## Output Schema 示例（节选）
 
 ```json
 {
   "rising": [
     {
-      "name": "verifier-based self-correction",
-      "comment": "Reflexion 工业化版本，DeepMind 同期发力"
-    },
-    {
-      "name": "time series foundation model",
-      "comment": "Chronos/Moirai 之后新一批 zero-shot 模型涌现"
+      "name": "Dense per-step credit assignment from policy distribution shift signals",
+      "representative_one_liner": "用未来 KL 散度作为 per-token advantage 信号",
+      "what_problem": "长程 RL 中 trajectory-level reward 太稀疏，token-level credit assignment 失败",
+      "shared_approach": "用'未来 distribution 变化'作密集 per-step credit，避开 PRM 标注成本",
+      "contrast_to_prior": "比 REINFORCE / GRPO 更密集；比 PRM 不需人工 reward",
+      "member_papers": ["2605.19835", "2603.11111", "2604.22222"],
+      "paper_count_recent": 3,
+      "paper_count_prior": 0,
+      "growth_pct": 999.0,
+      "citation_velocity_30d": 142,
+      "representative_affiliations": ["DeepMind", "OpenAI", "Tsinghua"],
+      "isolated": false
     }
   ],
-  "falling": [
-    {
-      "name": "long context techniques",
-      "comment": "随 GPT-4-128k 类模型普及，单项研究热度退潮"
-    }
-  ],
-  "new_emergence": [
-    {
-      "name": "mechanistic interpretability for safety",
-      "comment": "Anthropic Sparse Autoencoder 工作引发的集中跟进"
-    }
-  ],
-  "stable_hot": [
-    {
-      "name": "RLHF / DPO",
-      "comment": "持续热点，方法已成熟、应用扩张中"
-    }
-  ]
+  "new_emergence": [...],
+  "stable_hot": [...],
+  "falling": []
 }
 ```
 
@@ -133,10 +168,19 @@ pipeline 在调用前应已聚合好：
 
 | 失败 | 对策 |
 |---|---|
-| 简评写成数字描述 | 后置校验：comment 中含 "%" / "篇" / "增长" 则触发重写 |
-| 分类规则被忽略 | pipeline 在调用前已按规则筛选，LLM 只是命名和点评，不重新分类 |
-| 输出超出 5 条 | pipeline 后置截断 top 5 |
+| name 太短（< 30 字）| pipeline 后置过滤 drop |
+| name 等于 paper one_liner 原文 | LLM 没真做聚类，重试或 drop |
+| member_papers ID 不在输入中 | pipeline 校验，drop |
+| 全是 isolated=true 的 family | family 价值低，限制每类 ≤ 2 个 isolated |
+| 聚类太粗（"RL methods" 这种）| 重试，并提示 "name 必须描述具体机制" |
 
-## 双侧调用
+## Pipeline 行为
 
-每日跑两次，side 分别为 "ai" 和 "fin"，结果分两个 section 进邮件。
+- 每天为 AI 和 Fin 各跑一次
+- 输出落 inbox + email
+- 同时存到 trends history（未来对比用，目前不实现）
+
+## 备注
+
+这一版彻底改变 trend 的本质：从"字符串 tag 频率统计"变成"LLM 动态聚类 + 机制描述"。
+trends 输出从此具备研究分析价值，不只是噪声扫描。

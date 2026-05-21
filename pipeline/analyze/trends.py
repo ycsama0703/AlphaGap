@@ -1,11 +1,11 @@
-"""Trend summary — Prompt 03.
+"""Trend summary — Prompt 03 (mechanism-level dynamic clustering).
 
 Pipeline:
-  1. Aggregate method_primary concept counts from paper_extractions for two
-     14-day windows: recent (last 14 days ending today) vs prior (14 days before that).
-  2. Filter to concepts with count_recent >= MIN_COUNT.
-  3. Compute growth_pct and first_seen.
-  4. Call Prompt 03 once per side (ai / fin) → returns rising/falling/new/stable buckets.
+  1. Fetch papers in 90d (AI) / 180d (Fin) window with mechanism_description.
+  2. Sort by priority + citation_velocity, cap at 100 to control prompt size.
+  3. Feed to Prompt 03: LLM dynamically clusters mechanism descriptions into
+     families and classifies rising/falling/new_emergence/stable_hot.
+  4. Output families are mechanism-level (35-80 char names), not tags.
 """
 from __future__ import annotations
 
@@ -42,24 +42,29 @@ def _canonicalize(name: str) -> str:
     return " ".join((name or "").lower().split())
 
 
-def aggregate_concept_counts(side: str, recent_end: date,
-                              window_days: int = WINDOW_DAYS) -> dict:
-    """Build the prompt input dict for one side."""
+def aggregate_mechanism_papers(side: str, recent_end: date,
+                                window_days: int = WINDOW_DAYS,
+                                max_papers: int = 100) -> dict:
+    """Pull papers with mechanism_description in window, sorted by priority desc.
+
+    Returns:
+      {
+        side, window_recent, window_prior,
+        papers: [{paper_id, mechanism, publication_date, in_recent_window,
+                  citation_velocity_30d, affiliation, method_primary}, ...]
+      }
+    """
     recent_start = recent_end - timedelta(days=window_days - 1)
     prior_end = recent_start - timedelta(days=1)
     prior_start = prior_end - timedelta(days=window_days - 1)
-
-    counts_recent: dict[str, int] = {}
-    counts_prior: dict[str, int] = {}
-    first_seen: dict[str, date] = {}
-    rep_papers: dict[str, list[tuple[float, str, str, str]]] = {}
 
     with db.connect() as conn:
         rows = conn.execute(
             """
             SELECT p.id, p.title, p.publication_date, p.affiliations,
-                   e.method_primary_json, e.domain_json, e.tags_json,
-                   e.side as ext_side, s.priority_score
+                   e.method_primary_json, e.mechanism_description_json,
+                   e.side as ext_side,
+                   s.priority_score
             FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
             LEFT JOIN paper_signals s ON s.paper_id = p.id
@@ -68,10 +73,16 @@ def aggregate_concept_counts(side: str, recent_end: date,
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
               AND date(p.publication_date) <= ?
+              AND e.mechanism_description_json IS NOT NULL
+              AND e.mechanism_description_json != ''
+              AND e.mechanism_description_json != '{}'
+            ORDER BY s.priority_score DESC NULLS LAST
+            LIMIT ?
             """,
-            (side, prior_start.isoformat(), recent_end.isoformat()),
+            (side, prior_start.isoformat(), recent_end.isoformat(), max_papers),
         ).fetchall()
 
+    papers_out = []
     for r in rows:
         pub = r["publication_date"][:10] if r["publication_date"] else None
         if not pub:
@@ -81,95 +92,64 @@ def aggregate_concept_counts(side: str, recent_end: date,
         except ValueError:
             continue
 
-        in_recent = recent_start <= pub_d <= recent_end
-        in_prior = prior_start <= pub_d <= prior_end
-        if not (in_recent or in_prior):
-            continue
+        mech = json.loads(r["mechanism_description_json"] or "{}")
+        if not mech.get("one_liner"):
+            continue       # drop papers without mechanism content
 
-        # Trend signal aggregates across method_primary + domain + tags
-        # (method names are usually paper-unique; domain + tags repeat and form the actual trend signal)
-        concept_names: set[str] = set()
-        for field in ("method_primary_json", "domain_json", "tags_json"):
-            for raw in json.loads(r[field] or "[]"):
-                n = _canonicalize(raw)
-                if n:
-                    concept_names.add(n)
+        # Per-paper citation velocity
+        with db.connect() as c2:
+            v, _ = db.citation_velocity(c2, r["id"], window_days=30,
+                                         as_of=recent_end.isoformat())
 
-        for name in concept_names:
-            if in_recent:
-                counts_recent[name] = counts_recent.get(name, 0) + 1
-                rep_papers.setdefault(name, []).append(
-                    ((r["priority_score"] or 0.0), r["id"], r["title"],
-                     r["affiliations"] or "")
-                )
-            else:
-                counts_prior[name] = counts_prior.get(name, 0) + 1
-            if name not in first_seen or pub_d < first_seen[name]:
-                first_seen[name] = pub_d
-
-    # Citation velocity per concept (over the most recent 30d)
-    velocity_map = cite_mod.concept_velocity_map(
-        side, recent_end, window_days=window_days, velocity_window_days=30
-    )
-
-    concepts = []
-    for name, n_recent in counts_recent.items():
-        if n_recent < MIN_COUNT_RECENT:
-            continue
-        n_prior = counts_prior.get(name, 0)
-        growth = (
-            ((n_recent - n_prior) / n_prior) * 100 if n_prior > 0
-            else 999.0
-        )
-        reps = sorted(rep_papers[name], reverse=True)[:3]
-        concepts.append({
-            "name": name,
-            "count_recent": n_recent,
-            "count_prior": n_prior,
-            "growth_pct": round(growth, 1),
-            "citation_velocity_30d": velocity_map.get(name, 0),
-            "first_seen": first_seen[name].isoformat(),
-            "representative_papers": [
-                {
-                    "arxiv_id": pid,
-                    "title": (title or "")[:120],
-                    "affiliation": (affil.split(";")[0] or "").strip(),
-                }
-                for _, pid, title, affil in reps
-            ],
+        papers_out.append({
+            "paper_id": r["id"],
+            "mechanism": {
+                "one_liner": mech.get("one_liner", ""),
+                "what_problem": mech.get("what_problem", ""),
+                "contrast": mech.get("contrast", ""),
+                "prerequisites": mech.get("prerequisites", ""),
+            },
+            "publication_date": pub,
+            "in_recent_window": recent_start <= pub_d <= recent_end,
+            "citation_velocity_30d": v or 0,
+            "affiliation": (r["affiliations"] or "").split(";")[0].strip(),
+            "method_primary": json.loads(r["method_primary_json"] or "[]"),
+            "priority_score": r["priority_score"] or 0.0,
         })
-
-    # Sort by combined growth + citation velocity (rough rank)
-    concepts.sort(
-        key=lambda c: (c["growth_pct"] + c.get("citation_velocity_30d", 0) * 5),
-        reverse=True,
-    )
 
     return {
         "side": side,
         "window_recent": f"{recent_start} to {recent_end}",
         "window_prior": f"{prior_start} to {prior_end}",
-        "concepts": concepts,
+        "papers": papers_out,
     }
+
+
+# Legacy function name kept for callers; redirects to new aggregation
+def aggregate_concept_counts(side: str, recent_end: date,
+                              window_days: int = WINDOW_DAYS) -> dict:
+    return aggregate_mechanism_papers(side, recent_end, window_days)
 
 
 def summarize_trends(side: str, recent_end: date | None = None,
                      client: LLMClient | None = None,
-                     window_days: int | None = None) -> dict:
-    """Run Prompt 03 for one side.
+                     window_days: int | None = None,
+                     max_papers: int = 100) -> dict:
+    """Run Prompt 03 (mechanism-level clustering) for one side.
 
-    If window_days not given, picks asymmetric default by side
-    (AI=90, Fin=180).
+    Returns {rising, falling, new_emergence, stable_hot} where each item is
+    a mechanism family (not a tag).
     """
     recent_end = recent_end or date.today()
     if window_days is None:
         window_days = window_for_side(side)
-    payload = aggregate_concept_counts(side, recent_end, window_days=window_days)
+    payload = aggregate_mechanism_papers(side, recent_end, window_days=window_days,
+                                          max_papers=max_papers)
 
-    if not payload["concepts"]:
-        log.info("No concepts above MIN_COUNT for side=%s; skipping LLM trend call", side)
+    if not payload["papers"]:
+        log.info("No papers with mechanism descriptions for side=%s; skipping LLM trend call", side)
         return {"rising": [], "falling": [], "new_emergence": [], "stable_hot": [],
-                "_meta": {"reason": "no_data", **payload}}
+                "_meta": {"reason": "no_data", **{k: v for k, v in payload.items() if k != "papers"}}}
 
     client = client or LLMClient()
     system, user_template = parse_prompt("03_trend_summary")
@@ -178,19 +158,32 @@ def summarize_trends(side: str, recent_end: date | None = None,
         side=side,
         window_recent=payload["window_recent"],
         window_prior=payload["window_prior"],
-        concepts_json=json.dumps(payload["concepts"], ensure_ascii=False, indent=2),
+        papers_json=json.dumps(payload["papers"], ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.2)
+    # mechanism-clustering needs bigger output
+    result = client.chat_json(system=system, user=user, temperature=0.2, max_tokens=4096)
 
     for key in ("rising", "falling", "new_emergence", "stable_hot"):
         result.setdefault(key, [])
         if not isinstance(result[key], list):
             result[key] = []
 
+    # Post-filter: drop families where name is too short (LLM didn't really do
+    # mechanism-level clustering — fell back to tags)
+    for key in ("rising", "falling", "new_emergence", "stable_hot"):
+        filtered = []
+        for item in result[key]:
+            name = (item.get("name") or "").strip()
+            if len(name) < 25:
+                log.debug("Drop short-name trend family: %r", name)
+                continue
+            filtered.append(item)
+        result[key] = filtered
+
     result["_meta"] = {
         "side": side,
         "window_recent": payload["window_recent"],
-        "concept_count": len(payload["concepts"]),
+        "paper_count": len(payload["papers"]),
     }
     return result
 

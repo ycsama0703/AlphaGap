@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS paper_extractions (
     method_primary_json TEXT,                     -- ["..."]
     domain_json     TEXT,
     tags_json       TEXT,
+    mechanism_description_json TEXT,              -- L1: {one_liner, what_problem, contrast, prerequisites}
     building_blocks_json TEXT,                    -- L2
     claims_json     TEXT,                         -- L2
     benchmarks_json TEXT,                         -- L2
@@ -195,13 +196,14 @@ def upsert_extraction_l1(conn: sqlite3.Connection, paper_id: str, l1: dict) -> N
         """
         INSERT INTO paper_extractions
             (paper_id, side, method_primary_json, domain_json, tags_json,
-             l1_extracted_at, extraction_status)
-        VALUES (?, ?, ?, ?, ?, ?, 'l1_done')
+             mechanism_description_json, l1_extracted_at, extraction_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'l1_done')
         ON CONFLICT(paper_id) DO UPDATE SET
             side = excluded.side,
             method_primary_json = excluded.method_primary_json,
             domain_json = excluded.domain_json,
             tags_json = excluded.tags_json,
+            mechanism_description_json = excluded.mechanism_description_json,
             l1_extracted_at = excluded.l1_extracted_at,
             extraction_status = CASE
                 WHEN paper_extractions.extraction_status = 'l2_done' THEN 'l2_done'
@@ -214,6 +216,7 @@ def upsert_extraction_l1(conn: sqlite3.Connection, paper_id: str, l1: dict) -> N
             json.dumps(l1.get("method_primary", []), ensure_ascii=False),
             json.dumps(l1.get("domain", []), ensure_ascii=False),
             json.dumps(l1.get("tags", []), ensure_ascii=False),
+            json.dumps(l1.get("mechanism_description", {}), ensure_ascii=False),
             _now_iso(),
         ),
     )

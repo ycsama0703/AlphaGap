@@ -22,6 +22,14 @@
 - 必须达到的标准：读者扫一遍就能判断"能不能做、做需要多久、对比谁、看什么指标"
 - 不强求 dataset/benchmark 名字 100% 正确（用户会自己判断），但必须【具体、完整、不含糊】
 
+【机制层面 vs 品牌层面】（最重要的硬规则）：
+- ai_recent_papers 现在每篇都带 mechanism description（功能层）
+- **hypothesis 禁止出现 AI 论文的品牌方法名**（FIPO / CEPO / Reflexion / RecursiveMAS 等）
+  ✅ 用功能描述："用密集 per-step credit assignment 改进因子搜索"
+  ❌ 用品牌名："用 FIPO 改进因子搜索"
+- 品牌名只能在 anchor_papers 引用证据中出现
+- motivation 描述 AI 侧新技术时必须用 mechanism vocabulary，不能依赖品牌名
+
 观察窗口（重要）：
 - ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
 - fin_recent_papers / fin_trends 来自【过去 ~180 天】（金融发表节奏慢）

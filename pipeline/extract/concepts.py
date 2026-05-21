@@ -92,7 +92,7 @@ def _normalize_l1(raw: dict) -> dict:
     """Defensive normalization — LLM may drift on schema."""
     side = (raw.get("side") or "").lower().strip()
     if side not in ("ai", "fin", "both"):
-        side = "ai"   # default; pipeline can override via arxiv_category rule
+        side = "ai"
 
     def _as_list(v) -> list[str]:
         if not v:
@@ -101,11 +101,22 @@ def _normalize_l1(raw: dict) -> dict:
             return [v]
         return [str(x).strip() for x in v if str(x).strip()]
 
+    md = raw.get("mechanism_description") or {}
+    if not isinstance(md, dict):
+        md = {}
+    mechanism_description = {
+        "one_liner": (md.get("one_liner") or "").strip(),
+        "what_problem": (md.get("what_problem") or "").strip(),
+        "contrast": (md.get("contrast") or "").strip(),
+        "prerequisites": (md.get("prerequisites") or "").strip(),
+    }
+
     return {
         "side": side,
         "method_primary": _as_list(raw.get("method_primary"))[:2],
         "domain": _as_list(raw.get("domain"))[:3],
         "tags": _as_list(raw.get("tags"))[:5],
+        "mechanism_description": mechanism_description,
     }
 
 
