@@ -137,6 +137,17 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
     head += f"- novelty: {s.get('novelty_reason', '')}\n"
     head += f"- actionability: {s.get('actionability_reason', '')}\n"
 
+    sm = g.get("structural_mapping") or {}
+    if sm:
+        sev = sm.get("mismatch_severity", "?")
+        status = sm.get("match_status", "?")
+        sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
+        head += f"\n**🔗 Structural mapping** ({status} · {sev_emoji} mismatch={sev}):\n"
+        head += f"- AI: {sm.get('ai_data_structure', '?')}\n"
+        head += f"- Fin: {sm.get('fin_data_structure', '?')}\n"
+        if sm.get("bridge_required"):
+            head += f"- Bridge: {sm['bridge_required']}\n"
+
     ctx = g.get("research_context") or {}
     if ctx:
         head += "\n**Research context**:\n"

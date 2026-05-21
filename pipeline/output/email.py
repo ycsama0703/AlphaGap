@@ -183,6 +183,23 @@ def _gap_card_html(item: dict) -> str:
         f"<h3 style='margin:8px 0 4px 0;font-size:16px;line-height:1.35;'>{hyp}</h3>",
     ]
 
+    # Structural mapping (Tier 1.2)
+    sm = g.get("structural_mapping") or {}
+    if sm:
+        sev = sm.get("mismatch_severity", "?")
+        sev_color = {"low": "#0a6e3d", "medium": "#b07000", "high": "#c0392b"}.get(sev, "#888")
+        sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
+        out.append(
+            f"<div style='background:#fff8e6;padding:10px 14px;border-radius:6px;margin:10px 0;font-size:14px;'>"
+            f"<p style='margin:4px 0;'><b>🔗 Structural mapping</b> · "
+            f"<span style='color:{sev_color};'>{sev_emoji} {sm.get('match_status', '?')} · mismatch {sev}</span></p>"
+            f"<p style='margin:4px 0;'><b>AI</b>: {sm.get('ai_data_structure', '?')}</p>"
+            f"<p style='margin:4px 0;'><b>Fin</b>: {sm.get('fin_data_structure', '?')}</p>"
+        )
+        if sm.get("bridge_required"):
+            out.append(f"<p style='margin:4px 0;'><b>Bridge</b>: {sm['bridge_required']}</p>")
+        out.append("</div>")
+
     # Research context block
     ctx = g.get("research_context") or {}
     if ctx:
