@@ -67,6 +67,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "A_anchor_validity": {"pass": bool, "reason": string},
     "B_duplication": {"pass": bool, "reason": string},
     "C_specificity": {"pass": bool, "reason": string},
+    "L_structural_match": {"pass": bool, "reason": string},
     "D_reasoning_depth": {"pass": bool, "reason": string} | null,   // 理论型才填
     "E_evidence_for_gap": {"pass": bool, "reason": string} | null,
     "F_data_concrete": {"pass": bool, "reason": string} | null,     // 工程型才填
@@ -89,6 +90,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "A_anchor_validity": {"pass": true, "reason": ""},
     "B_duplication": {"pass": true, "reason": ""},
     "C_specificity": {"pass": true, "reason": ""},
+    "L_structural_match": {"pass": true, "reason": ""},
     "D_reasoning_depth": null,
     "E_evidence_for_gap": null,
     "F_data_concrete": {"pass": true, "reason": ""},

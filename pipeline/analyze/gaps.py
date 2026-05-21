@@ -15,6 +15,7 @@ from . import context as ctx_builder
 from . import scoring as scoring_mod
 from . import self_check as sc_mod
 from . import trends as trends_mod
+from . import uptake as uptake_mod
 
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,16 @@ def build_gap_context(end_date: date | None = None,
     ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=wd_ai)
     fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=wd_fin)
 
+    # Tier 1.1: quantified Fin-side uptake for AI concepts (algorithmic, not LLM)
+    ai_concepts_to_check = uptake_mod.extract_ai_concepts_for_uptake(
+        _strip_meta(ai_trends),
+        [ctx_builder.paper_for_prompt(p) for p in ai_papers],
+        max_concepts=30,
+    )
+    fin_uptake = uptake_mod.measure_fin_uptake(
+        ai_concepts_to_check, end_date=end, window_days=365,
+    )
+
     return {
         "end_date": end,
         "window_ai_days": wd_ai,
@@ -56,6 +67,7 @@ def build_gap_context(end_date: date | None = None,
         "ai_trends": _strip_meta(ai_trends),
         "fin_trends": _strip_meta(fin_trends),
         "existing_mappings": [ctx_builder.mapping_for_prompt(m) for m in mappings],
+        "fin_uptake": fin_uptake,    # ← Tier 1.1: hard negative-evidence ground truth
         # raw refs for downstream validation
         "_valid_ai_ids": {p["id"] for p in ai_papers},
         "_valid_fin_ids": {p["id"] for p in fin_papers},
@@ -67,10 +79,10 @@ def _strip_meta(trends: dict) -> dict:
     return {k: v for k, v in trends.items() if k != "_meta"}
 
 
-def generate_theoretical_gaps(context: dict, client: LLMClient | None = None) -> list[dict]:
-    """Prompt 04 → 0-5 theoretical gap candidates."""
+def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list[dict]:
+    """Prompt 04A → 15-25 one-liner candidates with diversity constraints."""
     client = client or LLMClient()
-    system, user_template = parse_prompt("04_gap_theoretical")
+    system, user_template = parse_prompt("04A_gap_enumerate")
     user = render_template(
         user_template,
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
@@ -78,7 +90,67 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None) ->
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
+    result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=3000)
+    candidates = result.get("candidates", []) if isinstance(result, dict) else []
+
+    # Validate anchor IDs are real
+    valid_ai = context.get("_valid_ai_ids", set())
+    candidates = [c for c in candidates if c.get("ai_anchor_paper_id") in valid_ai]
+    log.info("Enumerate: %d valid candidates from Prompt 04A", len(candidates))
+    return candidates
+
+
+def select_top_candidates(candidates: list[dict], top_n: int = 8) -> list[dict]:
+    """Diversify + pick top N from candidate pool.
+
+    Priority order:
+      1. fin_uptake_status = open_gap > partial > explored
+      2. ai_category diversity (≤ 2 per category)
+    """
+    status_order = {"open_gap": 0, "partial": 1, "explored": 2}
+    candidates.sort(key=lambda c: status_order.get(c.get("fin_uptake_status", "explored"), 3))
+
+    per_cat: dict[str, int] = {}
+    selected = []
+    for c in candidates:
+        cat = c.get("ai_category", "other")
+        if per_cat.get(cat, 0) >= 2:
+            continue
+        per_cat[cat] = per_cat.get(cat, 0) + 1
+        selected.append(c)
+        if len(selected) >= top_n:
+            break
+    return selected
+
+
+def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
+                              candidates: list[dict] | None = None) -> list[dict]:
+    """Prompt 04 → 0-5 theoretical gap candidates.
+
+    If `candidates` provided (from enumerate stage), refine only those.
+    Otherwise LLM generates from scratch (legacy behavior).
+    """
+    client = client or LLMClient()
+    system, user_template = parse_prompt("04_gap_theoretical")
+    user_kwargs = dict(
+        ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
+        fin_recent_papers_json=json.dumps(context["fin_recent_papers"], ensure_ascii=False, indent=2),
+        ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
+        fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
+        existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
+    )
+    if candidates:
+        # Refine mode: tell LLM to expand THESE specific candidates
+        prefix = (
+            f"\n\n【已挑选的候选 candidates，请你只精雕这些，每条扩展为完整 gap】\n"
+            f"{json.dumps(candidates, ensure_ascii=False, indent=2)}\n"
+        )
+        user = render_template(user_template, **user_kwargs) + prefix
+    else:
+        user = render_template(user_template, **user_kwargs)
     result = client.chat_json(system=system, user=user, temperature=0.6, max_tokens=4096)
     gaps = result.get("gaps", []) if isinstance(result, dict) else []
     for i, g in enumerate(gaps, start=1):
@@ -100,6 +172,7 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
         theoretical_gaps_today_json=json.dumps(theoretical_gaps, ensure_ascii=False, indent=2),
     )
     result = client.chat_json(system=system, user=user, temperature=0.4, max_tokens=6144)
@@ -131,7 +204,15 @@ def run_gap_pipeline(end_date: date | None = None,
         window_days=window_days, client=client,
     )
 
-    th_gaps = generate_theoretical_gaps(ctx, client=client)
+    # Tier 1.3: Two-stage generation
+    # Stage A: enumerate 15-25 one-liner candidates (cheap, diverse)
+    raw_candidates = enumerate_candidates(ctx, client=client)
+    top_candidates = select_top_candidates(raw_candidates, top_n=8)
+    log.info("Two-stage: %d raw → %d selected candidates for refinement",
+             len(raw_candidates), len(top_candidates))
+
+    # Stage B: refine selected candidates into full gaps
+    th_gaps = generate_theoretical_gaps(ctx, client=client, candidates=top_candidates)
     eng_gaps = generate_engineering_gaps(ctx, th_gaps, client=client)
     all_gaps = [(g, "engineering") for g in eng_gaps] + [(g, "theoretical") for g in th_gaps]
 

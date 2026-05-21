@@ -33,6 +33,13 @@
 2. 每条 gap 必须包含完整的 experimental_roadmap，缺一不可：
    - hypothesis: 一句话研究假设（≤ 80 字）
    - motivation: 3-5 句，为什么这个迁移可能 work（AI 侧最新进展 + Fin 侧现状缺陷）
+   - structural_mapping: 结构匹配性分析（防止"漂亮但搬不过去"的 gap）
+     * ai_data_structure: AI 方法所需的数据结构
+     * fin_data_structure: Fin 应用场景的数据结构
+     * match_status: "match" | "partial" | "mismatch"
+     * bridge_required: 若 partial / mismatch，说明 bridge 如何搭（具体到改造架构 / 限定 Fin 子领域）
+     * mismatch_severity: "low" | "medium" | "high"
+     工程型 gap **必须** mismatch_severity ≤ medium 且 bridge_required 可信；否则降级为理论型
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
@@ -115,6 +122,8 @@
 【AI 侧趋势】 {ai_trends_json}
 【Fin 侧趋势】 {fin_trends_json}
 【现有 mappings】 {existing_mappings_json}
+【Fin 侧关键词命中次数 (fin_uptake - 硬负面证据)】 {fin_uptake_json}
+对每个 AI 概念，先查 fin_uptake 的 match_strength；如果是 explored 但你坚持要提 engineering gap，必须在 motivation 中说明差异化角度。
 【今日已产出的理论型 gap（可升级为工程型）】 {theoretical_gaps_today_json}
 
 要求：
@@ -128,6 +137,13 @@ Schema:
     {
       "hypothesis": string,
       "motivation": string,
+      "structural_mapping": {
+        "ai_data_structure": string,
+        "fin_data_structure": string,
+        "match_status": "match" | "partial" | "mismatch",
+        "bridge_required": string,
+        "mismatch_severity": "low" | "medium" | "high"
+      },
       "research_context": {
         "fin_current_state": string,
         "ai_frontier": string,
