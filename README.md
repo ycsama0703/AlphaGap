@@ -12,7 +12,7 @@ AlphaGap 每天扫 AI 和金融两个领域的最新论文，自动发现"AI 已
 
 ---
 
-## Current state (as of 2026-05-21)
+## Current state (as of 2026-05-22)
 
 ### Deployed
 - **服务器**：`luyao4` (`/home/ycliu0703/workspace/projects/alphagap`)
@@ -22,7 +22,7 @@ AlphaGap 每天扫 AI 和金融两个领域的最新论文，自动发现"AI 已
 
 ### DB 状态
 - ~2700 papers backfilled (HF Daily 90 天)
-- ~2150 L1 extracted, ~120 L2 extracted
+- L1 extraction: **正在 reextract 加 mechanism_description 字段**（本地，~2530 篇，~30 分钟）
 - ~2150 papers have S2 citation snapshots
 
 ### 信号源
@@ -30,12 +30,66 @@ AlphaGap 每天扫 AI 和金融两个领域的最新论文，自动发现"AI 已
 - ❌ **arXiv API**（持续 429 rate-limited，目前未投产）
 - ⏳ **SSRN** / **S2 search**（未实现）
 
-### 已知问题
+### 进行中（2026-05-22）：Mechanism-Level 升级 Phase
+
+这是 gap detection 核心质量改造，从 "tag 级 shallow pattern matching" → "mechanism family 动态聚类"。
+
+**已完成的 4 步**：
+- ✅ **Step A**: L1 抽取深化 — 加 `mechanism_description.{one_liner, what_problem, contrast, prerequisites}` 4 子字段。LLM 现在用功能描述（"用未来 KL 散度作为 per-token advantage 信号"），不只品牌名（"FIPO"）。
+- ✅ **Step C**: Prompt 03 重写为 mechanism-level 动态聚类 — 不再聚合 tag 字符串，LLM 从 100 篇 paper 的 mechanism_description 里动态聚成 5-10 个 mechanism families，每个 family 带 representative_one_liner / what_problem / shared_approach / contrast_to_prior / member_papers / citation_velocity。
+- ✅ **Step D**: 品牌名禁令 — prompts 04/05 hypothesis 必须功能层描述；self-check 06 加 check M 拦截品牌嫁接（`hypothesis` 不允许出现 FIPO / CEPO / Reflexion 这种 paper 自创名）。
+
+**进行中**：
+- 🚧 **Step B**: Backfill 2530 篇用新 L1 重抽。运行中，~30 min，~$1.5 一次性成本。
+
+**待做**：
+- ⏳ **Step E**: 端到端测试 + 发邮件验收新 mechanism trends + gap 输出
+- ⏳ **Step F (可选)**: `uptake.py` 升级到 mechanism 级（用 mechanism description 而非 keyword 匹配 Fin 论文）
+- ⏳ 服务器 git pull + 同步本地 backfill 的 mechanism 抽取结果（或服务器自己重抽）
+
+### 已知问题（持续）
 1. **arXiv 429** —— 致命：Fin 侧 q-fin 论文几乎抓不到，Fin trends 持续单薄。fix：换 OAI-PMH 接口 + 加 polite User-Agent
-2. **Server git push 未配置** —— 用 `--no-commit` 绕过，inbox.md 只在服务器本地，没自动 push 到 GitHub
+2. **Server git push 未配置** —— 用 `--no-commit` 绕过，inbox.md 只在服务器本地
 3. **Mappings 表为空** —— 还没有 human-approved 的 mappings 沉淀
 4. **Weekly report 未实现** —— `pipeline/main.py` 里 `run_weekly` 是 stub
 5. **Logs 无 rotation** —— 跑半年后需要手动 truncate
+
+### 如何从这里捡起
+
+当 backfill 跑完（看 `db stats` 里 `l1_done` ≈ 2530）：
+
+```bash
+cd ~/Desktop/alphagap
+
+# 1. 验证 mechanism 字段抽出来了
+.venv/bin/python -c "
+import sqlite3, json
+conn = sqlite3.connect('db/alphagap.sqlite')
+row = conn.execute('SELECT mechanism_description_json FROM paper_extractions WHERE mechanism_description_json IS NOT NULL LIMIT 1').fetchone()
+print(json.dumps(json.loads(row[0]), indent=2, ensure_ascii=False))
+"
+
+# 2. 跑一次 daily pipeline 看新 trends + gap 输出
+.venv/bin/python -m pipeline.main daily --no-commit 2>&1 | tail -15
+
+# 3. 检查邮件 / inbox / brief，重点看：
+#    - Mechanism Trends 是否真的是 35-80 字的功能描述（而非 "agent" 这种 tag）
+#    - Gap hypothesis 是否不再出现 paper 品牌名
+#    - structural_mapping 字段是否正确填充
+
+# 4. 服务器同步（确认本地效果好之后）
+ssh luyao4
+cd ~/workspace/projects/alphagap && git pull
+# 服务器 DB 需要单独 reextract（数据不互通）：
+.venv/bin/python -c "
+import sqlite3; conn = sqlite3.connect('db/alphagap.sqlite')
+conn.execute('DELETE FROM paper_extractions'); conn.commit()
+print('cleared')
+"
+.venv/bin/python -u -m pipeline.ingest --no-arxiv --no-hf --max-l1 5000 --max-l2 0 2>&1 | tail -5
+```
+
+下次 cron（明早 7:00 WIB）就会用新 mechanism-level 逻辑出邮件。
 
 ---
 
@@ -283,14 +337,21 @@ ALPHAGAP_DB_PATH=db/alphagap.sqlite
 
 ## Roadmap
 
+### 立刻（mechanism-level 升级收尾）
+- [ ] **Step E**: 本地 backfill 跑完后端到端测试 + 发邮件验收
+- [ ] **Step F**: `uptake.py` 升级到 mechanism 级（用 mechanism description 匹配 Fin 论文而非 keyword）
+- [ ] **服务器同步**: 同样需要 reextract 一次（或等 cron 自然积累）
+
 ### 短期（优先级高）
 - [ ] **修 arXiv 429**：换 OAI-PMH 接口 + polite User-Agent → 解锁 Fin 侧抓取
 - [ ] **First mapping seed**：手动建 5-10 个 mappings 作为种子，让 LLM 后续 add_mapping 提议有上下文
+- [ ] **Mapping 反馈回路**：被 reject 的 gap 留 in-context 例子，让 LLM 学习用户偏好（[Tier 2.4]）
 
 ### 中期
 - [ ] **Weekly report**：`run_weekly()` 实现，周末邮件汇总 mapping 表变化、本周 gap top 5
 - [ ] **Server git push**：服务器配 GitHub SSH key 或 HTTPS token，让 inbox 自动推到 git
 - [ ] **Log rotation**：logrotate 配置或 cron 自动 truncate
+- [ ] **Mechanism entity table (Phase 2)**：如果 dynamic clustering 不稳定，再考虑建 `mechanisms` 持久化表 + 聚类去重
 
 ### 长期
 - [ ] **Author h-index enrichment**：S2 author batch API 拉 h-index，激活白名单的 h-index 阈值规则
