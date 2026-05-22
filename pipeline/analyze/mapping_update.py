@@ -48,6 +48,11 @@ def propose_mapping_updates(today_papers: list[dict],
     actions = result.get("actions", []) if isinstance(result, dict) else []
     today_paper_ids = {p.get("id") for p in today_papers}
     accepted_gap_ids = {g.get("gap", {}).get("_id") for g in today_accepted_gaps}
+    drafted_gap_ids = {
+        g.get("gap", {}).get("_id")
+        for g in today_accepted_gaps
+        if g.get("_mapping_draft_path")
+    }
     mapping_ids = {m.get("id") for m in existing_mappings}
 
     validated: list[dict] = []
@@ -69,6 +74,9 @@ def propose_mapping_updates(today_papers: list[dict],
         elif atype == "add_mapping":
             if a.get("from_gap_id") not in accepted_gap_ids:
                 log.debug("Drop add_mapping with unknown gap_id %s", a.get("from_gap_id"))
+                continue
+            if a.get("from_gap_id") in drafted_gap_ids:
+                log.debug("Drop add_mapping for gap with mapping draft %s", a.get("from_gap_id"))
                 continue
             if a.get("initial_status") not in ("open_gap", "partially_explored"):
                 a["initial_status"] = "open_gap"

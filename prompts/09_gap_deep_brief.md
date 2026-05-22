@@ -1,4 +1,4 @@
-# Prompt 09: Gap Deep Brief（仅对 score ≥ 8 的 gap）
+# Prompt 09: Gap Deep Brief（仅对 email-ready gap）
 
 **用途**：把通过审查 + 高分的 gap 扩展成一份**可独立递给 AI 工程师 / 合作研究者**的研究 brief。读完这份 md，对方应该完整 grasp 这个 idea 是什么、从哪开始、真正贡献在哪——不需要任何额外上下文。
 
@@ -21,6 +21,7 @@
 3. 知道从哪一步开始动手（先读什么论文、第一个实验是什么）
 4. 清晰看到真正的 contribution 和成功长什么样
 5. 知道概念层面的关键风险
+6. 一眼看出实验大致需要什么算力 / API / 运行资源
 
 【输出形态】
 直接输出 markdown 文本，不要包裹 ```markdown ... ``` 也不要任何前后缀。
@@ -56,6 +57,7 @@ markdown 结构使用以下 H2 (##) 章节，顺序固定：
 - 第 2 步要复现什么 baseline 确认整套环境 work
 - 第 3 步要做的【第一个真实验】（最小可行：单股票 / 单事件窗口 / 一个 ablation）
 - 如果第 3 步过了，下一步展开方向；如果不过，pivot 到哪
+- 单独写一小段 **Compute / Runtime**：需要 CPU、单 GPU、多 GPU、LLM API 还是 fine-tuning；主要瓶颈是什么；低算力 fallback 是什么。这个只作执行信息，不评价 gap 质量。
 
 ## 6. The True Contribution
 如果这个 idea 做出来，【真正新增了什么认识】。
@@ -95,7 +97,7 @@ markdown 结构使用以下 H2 (##) 章节，顺序固定：
 【gap 完整内容】
 {gap_full_json}
 
-【gap 评分】 novelty={novelty} actionability={actionability} total={total}
+【gap 评分】 novelty={novelty} actionability={actionability} theoretical_support={theoretical_support} total={total}
 
 【相关论文（已抓取并 enrich 过）】
 {related_papers_json}

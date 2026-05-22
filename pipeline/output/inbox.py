@@ -16,6 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from ..config import PROJECT_ROOT
+from .compute import compute_profile_summary
 
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         _section_gaps_all(payload),
         _section_trends(payload),
         _section_top_papers(payload),
+        _section_mapping_drafts(payload),
         _section_mapping_actions(payload),
         _section_review_instructions(),
     ]
@@ -45,13 +47,22 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
 
 def _section_stats(p: dict) -> str:
     s = p.get("stats", {})
+    selected = s.get("fin_fields_selected") or []
+    available = s.get("fin_fields_available") or []
+    field_line = ""
+    if selected:
+        field_line = (
+            f"\n- Fin field boundaries selected: **{', '.join(selected)}**"
+            f" ({len(selected)}/{len(available) or len(selected)})"
+        )
     return (
         f"## Pipeline\n\n"
         f"- Papers fetched: **{s.get('fetched', '?')}** | candidates: **{s.get('candidates', '?')}**\n"
         f"- L1 extracted: {s.get('l1_done', '?')} | L2 extracted: {s.get('l2_done', '?')}\n"
         f"- Gaps generated: {len(p.get('theoretical', []))} theoretical + {len(p.get('engineering', []))} engineering\n"
-        f"- Accepted: {len(p.get('accepted', []))} | Email-ready (≥8): {len(p.get('email_ready', []))}\n"
+        f"- Accepted: {len(p.get('accepted', []))} | Email-ready: {len(p.get('email_ready', []))}\n"
         f"- Mapping actions proposed: {len(p.get('mapping_actions', []))}\n"
+        f"{field_line}\n"
         f"- LLM cost: ${s.get('cost_usd', 0):.4f}"
     )
 
@@ -124,8 +135,8 @@ def _section_trends(p: dict) -> str:
 def _section_gaps_email(p: dict) -> str:
     eg = p.get("email_ready", [])
     if not eg:
-        return "## Gaps (email-ready, score ≥ 8)\n\n_None today._"
-    out = ["## Gaps (email-ready, score ≥ 8)"]
+        return "## Gaps (email-ready)\n\n_None today._"
+    out = ["## Gaps (email-ready)"]
     for item in eg:
         out.append(_render_gap_detail(item, full=True))
     return "\n".join(out)
@@ -151,11 +162,35 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
 
     head = (
         f"\n### [{gid}] ({gtype}) total={s['total']} · "
-        f"novelty={s['novelty']} · actionability={s['actionability']}\n\n"
+        f"novelty={s['novelty']} · actionability={s['actionability']} · "
+        f"theory={s.get('theoretical_support', '?')}\n\n"
         f"**假设**: {hypothesis}\n"
     )
     head += f"- novelty: {s.get('novelty_reason', '')}\n"
     head += f"- actionability: {s.get('actionability_reason', '')}\n"
+    head += f"- theoretical_support: {s.get('theoretical_support_reason', '')}\n"
+    components = s.get("theoretical_support_components") or {}
+    if components:
+        comp_text = ", ".join(f"{k}={v}" for k, v in components.items())
+        head += f"- theoretical_support_components: {comp_text}\n"
+    if s.get("email_gate"):
+        head += f"- email_gate: {s.get('email_gate')} — {s.get('email_gate_reason', '')}\n"
+
+    field = g.get("field_boundary_alignment") or {}
+    if field:
+        head += "\n**Fin field boundary**:\n"
+        if field.get("field_id"):
+            head += f"- Field: `{field['field_id']}`\n"
+        if field.get("mechanism_family"):
+            head += f"- Mechanism family: {field['mechanism_family']}\n"
+        if field.get("open_bottleneck"):
+            head += f"- Bottleneck: {field['open_bottleneck']}\n"
+        if field.get("good_transfer_target"):
+            head += f"- Good transfer target: {field['good_transfer_target']}\n"
+        if field.get("bad_target_avoided"):
+            head += f"- Bad target avoided: {field['bad_target_avoided']}\n"
+        if field.get("why_aligned"):
+            head += f"- Why aligned: {field['why_aligned']}\n"
 
     sm = g.get("structural_mapping") or {}
     if sm:
@@ -202,6 +237,14 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
                     head += f"  - {m}\n"
             metrics = roadmap.get("metrics", {}) or {}
             head += f"\n**Metrics**: primary={metrics.get('primary', [])}, secondary={metrics.get('secondary', [])}\n"
+            compute = roadmap.get("compute_profile") or {}
+            compute_summary = compute_profile_summary(compute)
+            if compute_summary:
+                head += f"\n**Compute**: {compute_summary}\n"
+                if compute.get("summary"):
+                    head += f"- summary: {compute['summary']}\n"
+                if compute.get("fallback"):
+                    head += f"- fallback: {compute['fallback']}\n"
             baselines = roadmap.get("baselines", []) or []
             if baselines:
                 head += "\n**Baselines**:\n"
@@ -268,14 +311,34 @@ def _section_mapping_actions(p: dict) -> str:
     return "\n".join(out)
 
 
+def _section_mapping_drafts(p: dict) -> str:
+    drafts = p.get("mapping_drafts", [])
+    if not drafts:
+        return "## Mapping Drafts\n\n_No mapping drafts today._"
+    out = ["## Mapping Drafts (review before promotion)\n"]
+    for draft in drafts:
+        path = draft.get("_path", "")
+        source = draft.get("source_gap_id", "?")
+        status = draft.get("status", "?")
+        out.append(f"\n### Draft: {source} · {status}")
+        if path:
+            out.append(f"- **file**: [`{path}`]({path})")
+        out.append(f"- **hypothesis**: {draft.get('hypothesis', '')}")
+        out.append(f"- **AI mechanism**: {draft.get('ai_mechanism', '')}")
+        out.append(f"- **Fin structure**: {draft.get('fin_structure', '')}")
+        out.append(f"- **Bridge**: {draft.get('bridge', '')}")
+        out.append("\n> Decision: [ ] promote  [ ] reject  [ ] modify draft\n")
+    return "\n".join(out)
+
+
 def _section_review_instructions() -> str:
     return (
         "---\n\n"
         "## How to review\n\n"
-        "1. For each gap and mapping action, fill in `[x]` on accept / reject / modify\n"
-        "2. For approved `add_mapping` actions, create a new file in `mappings/` "
-        "(see existing files for format)\n"
+        "1. For each gap, mapping draft, and mapping action, fill in `[x]` on the chosen decision\n"
+        "2. For approved drafts, review `mappings/drafts/*.md`, edit frontmatter if needed, "
+        "then promote by moving the file to `mappings/` and assigning a stable `id: Mxxxx`\n"
         "3. For approved `status_change` / `add_evidence`, edit the relevant `mappings/*.md`\n"
         "4. `git add . && git commit -m \"review YYYY-MM-DD\" && git push`\n"
-        "5. Server will use updated mappings as context for tomorrow's run\n"
+        "5. Server will use updated official mappings as context for tomorrow's run; drafts are ignored until promoted\n"
     )

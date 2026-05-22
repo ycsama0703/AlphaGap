@@ -18,6 +18,12 @@ pipeline 调用前聚合：
     {
       "id": "...", "title": "...", "abstract_short": "...",
       "method_primary": [...], "domain": [...], "tags": [...],
+      "mechanism": {
+        "one_liner": "...",
+        "what_problem": "...",
+        "contrast": "...",
+        "prerequisites": "..."
+      },
       "affiliation_top": "DeepMind",
       "score": 9.2   // pipeline 综合打分
     },
@@ -26,6 +32,23 @@ pipeline 调用前聚合：
   "fin_recent_papers": [...],   // top 10
   "ai_trends": {...},           // Prompt 03 输出
   "fin_trends": {...},
+  "fin_field_boundaries": [
+    {
+      "id": "financial_llm_agents",
+      "mechanism_families": [
+        {
+          "name": "Evidence-Sufficient Agentic Retrieval",
+          "mechanism": "...",
+          "current_boundary": "...",
+          "gap_relevance": "..."
+        }
+      ],
+      "open_bottlenecks": [...],
+      "good_transfer_targets": [...],
+      "bad_transfer_targets": [...],
+      "gap_construction_rules": [...]
+    }
+  ],
   "existing_mappings": [
     {
       "id": "M001",
@@ -70,11 +93,29 @@ pipeline 调用前聚合：
 【机制层面 vs 品牌层面】（最重要的硬规则）：
 - ai_recent_papers 现在每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`
 - ai_trends 是 mechanism families（每条带 representative_one_liner / shared_approach / contrast_to_prior）
+- 构造 gap 时，必须优先引用 `mechanism.one_liner` 和 `mechanism.what_problem`，不要从 `method_primary` 直接搬品牌名
+- `mechanism.contrast` 用来判断新机制相对 prior 的真实差异；如果 contrast 不清楚，不要强行生成 gap
+- `mechanism.prerequisites` 必须映射到 Fin 场景的可满足条件；如果前提不满足，structural_mapping 至少标为 partial
 - **hypothesis 禁止出现 AI 论文的品牌方法名**（FIPO / CEPO / Reflexion / RecursiveMAS 等）
   ✅ 用功能描述："用未来 distribution 变化作密集 credit signal 改进因子衰减检测"
   ❌ 用品牌名："用 FIPO 改进因子衰减"
 - 论文品牌名只能出现在 ai_anchor.paper_id 引用证据中
 - 同样禁止在 ai_anchor.concept 字段填品牌名，要填功能描述（< 60 字）
+
+【正式 mappings 的状态语义】（必须用于去重）
+- existing_mappings 只包含人工确认过的 `mappings/*.md`，不包含 drafts
+- status="open_gap": 这是已确认但仍开放的方向；可以提出更具体的子问题，但不要把同义表述当作新 gap
+- status="partially_explored": Fin 侧已有初步工作；只有当你的角度明显不同，才可提出 gap，并在 why_open_gap 说明差异
+- status="mature": 该 AI→Fin mapping 已成熟；不要生成同方向 gap
+- status="refuted": 该方向已被否定；默认不要生成，除非新 AI mechanism 改变了前提条件
+
+【Fin 领域边界 notes】（必须作为金融侧边界模型）
+- fin_field_boundaries 是人工维护的金融领域边界知识，不是每日生成物
+- 每个 gap 必须显式落在至少一个 mechanism_families / open_bottlenecks / good_transfer_targets 上
+- research_context.fin_current_state 必须体现 field note 中的当前边界，而不是只复述近期论文标题
+- 若候选方向命中 bad_transfer_targets，默认不要输出；除非你能说明新机制如何绕开其失败原因
+- benchmark / paper 名字只可作为 evidence，不可作为 gap 的组织概念
+- 对 financial_llm_agents 这类 field，优先考虑 workflow reliability / tool routing / evidence sufficiency / trace audit / temporal validity / constraint handling，而不是泛泛 "LLM trading"
 
 输出原则：
 1. 严格 JSON，无前后缀
@@ -88,6 +129,13 @@ pipeline 调用前聚合：
      * match_status: "match" | "partial" | "mismatch"
      * bridge_required: 若 partial / mismatch，说明 bridge 如何搭（具体到改造模型架构 / 切换变种 / 限定适用情境）
      * mismatch_severity: "low" | "medium" | "high"（high 表示 bridge 不可信，gap 大概率不可行）
+   - field_boundary_alignment: 该 gap 对齐的 Fin field 边界 provenance
+     * field_id: 必须来自 fin_field_boundaries[*].id
+     * mechanism_family: 必须来自该 field 的 mechanism_families[*].name
+     * open_bottleneck: 尽量来自该 field 的 open_bottlenecks[*].name
+     * good_transfer_target: 尽量来自该 field 的 good_transfer_targets
+     * bad_target_avoided: 若该方向容易落入 bad_transfer_targets，说明避开了哪条
+     * why_aligned: 一句话说明该 gap 为什么确实落在这个金融机制边界上
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
@@ -111,6 +159,14 @@ pipeline 调用前聚合：
   "fin_anchor": {
     "description": "Fin 侧因子衰减诊断仍依赖统计检验（rolling Sharpe, structural break test）",
     "evidence_paper_ids": []
+  },
+  "field_boundary_alignment": {
+    "field_id": "factor_investing",
+    "mechanism_family": "Factor Decay And Crowding Diagnosis",
+    "open_bottleneck": "Factor decay diagnosis",
+    "good_transfer_target": "Mechanistic interpretability for deep factor models and alpha generators",
+    "bad_target_avoided": "generic return prediction",
+    "why_aligned": "该 gap 聚焦因子衰减的机制诊断，而不是泛泛预测收益"
   },
   "research_context": {
     "fin_current_state": "金融实践中因子衰减诊断主流仍是滚动 Sharpe、结构断点检验、IC 衰减监控等统计方法；学术上 Kelly et al. 2020/Chen-Pelger-Zhu 2022 用 ML 预测因子收益但缺乏对因子失效原因的内部归因。",
@@ -153,6 +209,9 @@ pipeline 调用前聚合：
 【现有 mappings 表（去重用）】
 {existing_mappings_json}
 
+【Fin 领域边界 notes（机制层级，用于判断金融侧真实边界）】
+{fin_field_boundaries_json}
+
 【Fin 侧关键词命中次数 (fin_uptake - 硬负面证据)】
 {fin_uptake_json}
 对每个你考虑的 AI 概念，先查 fin_uptake 里它的 match_strength：
@@ -165,8 +224,17 @@ pipeline 调用前聚合：
   "gaps": [
     {
       "hypothesis": string,
+      "source_candidate_idx": number | null,
       "ai_anchor": {"paper_id": string, "concept": string},
       "fin_anchor": {"description": string, "evidence_paper_ids": [string]},
+      "field_boundary_alignment": {
+        "field_id": string,
+        "mechanism_family": string,
+        "open_bottleneck": string,
+        "good_transfer_target": string,
+        "bad_target_avoided": string,
+        "why_aligned": string
+      },
       "structural_mapping": {
         "ai_data_structure": string,
         "fin_data_structure": string,

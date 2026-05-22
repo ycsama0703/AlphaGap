@@ -25,6 +25,13 @@ M. no_brand_in_hypothesis: hypothesis / ai_anchor.concept 含 AI 论文品牌方
    - 判定：name 是否出现在 ai_recent_papers 任一 method_primary 列表里
    - hypothesis 应是【功能层描述】，不是【品牌嫁接】
    - 品牌名只能在 ai_anchor.paper_id 引用证据中出现
+O. field_boundary_alignment: 是否对齐 Fin 领域边界 notes
+   - 缺 field_boundary_alignment → fail（致命）
+   - field_id 必须存在于 fin_field_boundaries[*].id
+   - mechanism_family 必须能在该 field 的 mechanism_families[*].name 中找到
+   - gap 应该落在至少一个 mechanism family / open bottleneck / good transfer target 上
+   - 若命中 bad_transfer_targets 且没有解释如何规避，fail
+   - 只按论文或 benchmark 名字组织、没有金融机制边界，fail
 
 理论型专属检查：
 D. reasoning_depth: reasoning_chain 是否 ≥ 3 步且每步有信息量
@@ -37,13 +44,16 @@ H. metrics_quantitative: primary metrics ≥ 2 个且可量化（不是"看看�
 I. baselines_sufficient: baselines ≥ 2 个，且每个有锚定论文或明确描述
 J. ablations_present: ablations ≥ 1 个，且每个验证某个具体组件
 K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
+N. compute_profile_present: experimental_roadmap.compute_profile 是否提供算力 / API / 运行资源画像
+   - 这是执行信息，不代表 gap 质量
+   - 缺失时标 fail，但不要因此 reject/downgrade；在 verdict_summary 里提醒即可
 
 输出规则：
 1. 严格 JSON，无前后缀
 2. 每项检查输出 pass: true/false 和 reason（不通过时必填，≤ 30 字）
 3. 给出 overall_verdict：
-   - "accept": 所有相关检查都 pass
-   - "reject": A / B / M 不通过，或 L 显示 mismatch=high + bridge 不可信（致命）
+   - "accept": 除 N 外所有相关检查都 pass（N 缺失只作提醒）
+   - "reject": A / B / M / O 不通过，或 L 显示 mismatch=high + bridge 不可信（致命）
    - "downgrade": 工程型未通过 F-K 任一，或 L 显示要降级 → 降级为理论型
    - "retry": 通用检查通过，但其他可修复字段失败（如 reasoning_chain 浅但 anchor 合法），建议重生成
 4. 客观判断，不要找借口让 gap 通过
@@ -69,6 +79,12 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
 【现有 mappings 摘要（用于 duplication 检查）】
 {mappings_brief_json}   // 仅 ai_concept + fin_concept + status
 
+【Fin 领域边界 notes（用于检查是否对齐真实金融边界）】
+{fin_field_boundaries_json}
+
+【近期 AI 论文 method_primary 名称（用于品牌名检查）】
+{ai_method_names_json}
+
 输出严格 JSON：
 {
   "checks": {
@@ -77,6 +93,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "C_specificity": {"pass": bool, "reason": string},
     "L_structural_match": {"pass": bool, "reason": string},
     "M_no_brand_in_hypothesis": {"pass": bool, "reason": string},
+    "O_field_boundary_alignment": {"pass": bool, "reason": string},
     "D_reasoning_depth": {"pass": bool, "reason": string} | null,   // 理论型才填
     "E_evidence_for_gap": {"pass": bool, "reason": string} | null,
     "F_data_concrete": {"pass": bool, "reason": string} | null,     // 工程型才填
@@ -84,9 +101,11 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "H_metrics_quantitative": {"pass": bool, "reason": string} | null,
     "I_baselines_sufficient": {"pass": bool, "reason": string} | null,
     "J_ablations_present": {"pass": bool, "reason": string} | null,
-    "K_no_TBD": {"pass": bool, "reason": string} | null
+    "K_no_TBD": {"pass": bool, "reason": string} | null,
+    "N_compute_profile_present": {"pass": bool, "reason": string} | null
   },
   "overall_verdict": "accept" | "reject" | "downgrade" | "retry",
+  "field_boundary_alignment": object,  // 原样返回 gap.field_boundary_alignment，便于 pipeline 记录
   "verdict_summary": string   // ≤ 50 字解释 verdict
 }
 ```
@@ -101,6 +120,7 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "C_specificity": {"pass": true, "reason": ""},
     "L_structural_match": {"pass": true, "reason": ""},
     "M_no_brand_in_hypothesis": {"pass": true, "reason": ""},
+    "O_field_boundary_alignment": {"pass": true, "reason": ""},
     "D_reasoning_depth": null,
     "E_evidence_for_gap": null,
     "F_data_concrete": {"pass": true, "reason": ""},
@@ -108,7 +128,8 @@ K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
     "H_metrics_quantitative": {"pass": true, "reason": ""},
     "I_baselines_sufficient": {"pass": true, "reason": ""},
     "J_ablations_present": {"pass": true, "reason": ""},
-    "K_no_TBD": {"pass": true, "reason": ""}
+    "K_no_TBD": {"pass": true, "reason": ""},
+    "N_compute_profile_present": {"pass": false, "reason": "缺算力资源画像，不影响质量判断"}
   },
   "overall_verdict": "downgrade",
   "verdict_summary": "method 不够细，roadmap 不完整，降为理论型保留 hypothesis"

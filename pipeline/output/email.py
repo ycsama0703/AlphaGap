@@ -4,7 +4,7 @@ Email contains:
   1. 今日重点论文 top 5-10（高价值作者/机构）
   2. AI 方向 trends（14 天滚动）
   3. Fin 方向 trends
-  4. 高分 Gap（total >= 8）— 理论型 + 工程型并列展示
+  4. Email-ready gaps — engineering uses total gate; theoretical uses high-novelty gate
 
 NOT a paper digest — full audit lives in inbox/YYYY-MM-DD.md.
 """
@@ -16,6 +16,7 @@ from datetime import date
 import resend
 
 from ..config import load_settings
+from .compute import compute_profile_summary
 
 
 log = logging.getLogger(__name__)
@@ -177,7 +178,7 @@ def _gaps_html(p: dict) -> str:
     if not eg:
         return "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>Gaps</h2><p><em>No email-ready gaps today.</em></p>"
     out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
-           f"⭐ Gaps ({len(eg)} email-ready, score ≥ 8)</h2>"]
+           f"⭐ Gaps ({len(eg)} email-ready)</h2>"]
     for item in eg:
         out.append(_gap_card_html(item))
     return "\n".join(out)
@@ -202,11 +203,37 @@ def _gap_card_html(item: dict) -> str:
         f"border-radius:3px;font-size:11px;'>{gtype.upper()}</span></span>",
         f"<span style='font-size:13px;color:#444;'>"
         f"<b>{s['total']}</b> "
-        f"<span style='color:#888;'>(nov {s['novelty']} · act {s['actionability']})</span></span>",
+        f"<span style='color:#888;'>(nov {s['novelty']} · act {s['actionability']} · "
+        f"theory {s.get('theoretical_support', '?')})</span></span>",
         f"</div>",
         # Hypothesis
         f"<h3 style='margin:8px 0 4px 0;font-size:16px;line-height:1.35;'>{hyp}</h3>",
     ]
+    if s.get("email_gate"):
+        out.append(
+            f"<p style='margin:4px 0;font-size:12px;color:#777;'>"
+            f"Gate: {s.get('email_gate')} · {s.get('email_gate_reason', '')}</p>"
+        )
+
+    field = g.get("field_boundary_alignment") or {}
+    if field:
+        bits = []
+        if field.get("field_id"):
+            bits.append(f"Field: <b>{field['field_id']}</b>")
+        if field.get("mechanism_family"):
+            bits.append(f"Boundary: {field['mechanism_family']}")
+        if field.get("open_bottleneck"):
+            bits.append(f"Bottleneck: {field['open_bottleneck']}")
+        if bits:
+            out.append(
+                f"<p style='margin:6px 0;font-size:13px;color:#555;'>"
+                f"{' · '.join(bits)}</p>"
+            )
+        if field.get("why_aligned"):
+            out.append(
+                f"<p style='margin:4px 0 8px 0;font-size:12px;color:#777;'>"
+                f"{field['why_aligned']}</p>"
+            )
 
     # Structural mapping (Tier 1.2)
     sm = g.get("structural_mapping") or {}
@@ -252,6 +279,9 @@ def _gap_card_html(item: dict) -> str:
             out.append("<p style='margin:8px 0;font-size:14px;'><b>Baselines</b>: " +
                        " · ".join(b.get("name", "?") for b in baselines) + "</p>")
         out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Effort</b>: {roadmap.get('estimated_effort','?')}</p>")
+        compute = compute_profile_summary(roadmap.get("compute_profile"))
+        if compute:
+            out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Compute</b>: {compute}</p>")
     else:
         ai = g.get("ai_anchor", {})
         fin = g.get("fin_anchor", {})

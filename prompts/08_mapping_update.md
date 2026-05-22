@@ -23,8 +23,11 @@
   "existing_mappings": [
     {
       "id": "M001",
-      "ai_concept": "...",
-      "fin_concept": "...",
+      "ai_concept": "...",       // legacy alias; prefer ai_mechanism when present
+      "fin_concept": "...",      // legacy alias; prefer fin_structure when present
+      "ai_mechanism": "...",
+      "fin_structure": "...",
+      "bridge": "...",
       "status": "open_gap | partially_explored | mature | refuted",
       "notes": "...",
       "last_updated": "yyyy-mm-dd"
@@ -32,7 +35,7 @@
     ...
   ],
   "today_accepted_gaps": [
-    // Prompt 04/05/06/07 通过且 score ≥ 8 的 gap，作为"应入主表"候选
+    // Prompt 04/05/06/07 通过且 email-ready 的 gap，作为"应入主表"候选
   ]
 }
 ```
@@ -56,7 +59,8 @@
 
 2. add_mapping（新建 mapping）
    - 把 today_accepted_gaps 中的某条 gap 升级为正式 mapping 入主表
-   - mapping 的 ai_concept 和 fin_concept 须基于 gap 的 ai_anchor/fin_anchor 抽象出来
+   - mapping 的 ai_concept/fin_concept 须基于 gap 的 mechanism-level ai_anchor/structural_mapping 抽象出来
+   - 如果 today_accepted_gaps 已经有 mapping draft 路径，优先把它视作待人工 promote 的草稿，不要重复提同义 add_mapping
    - status 通常初始为 "open_gap" 或 "partially_explored"
 
 3. add_evidence（加证据）

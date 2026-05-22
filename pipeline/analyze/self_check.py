@@ -25,6 +25,8 @@ log = logging.getLogger(__name__)
 def check_gap(gap: dict, gap_type: str,
               valid_ai_ids: set[str], valid_fin_ids: set[str],
               mappings_brief: list[dict],
+              fin_field_boundaries: list[dict] | None = None,
+              ai_method_names: list[str] | None = None,
               client: LLMClient | None = None) -> dict:
     """Prompt 06 — returns dict with checks + overall_verdict + verdict_summary."""
     client = client or LLMClient()
@@ -36,6 +38,8 @@ def check_gap(gap: dict, gap_type: str,
         valid_ai_paper_ids=json.dumps(sorted(valid_ai_ids), ensure_ascii=False),
         valid_fin_paper_ids=json.dumps(sorted(valid_fin_ids), ensure_ascii=False),
         mappings_brief_json=json.dumps(mappings_brief, ensure_ascii=False, indent=2),
+        fin_field_boundaries_json=json.dumps(fin_field_boundaries or [], ensure_ascii=False, indent=2),
+        ai_method_names_json=json.dumps(ai_method_names or [], ensure_ascii=False, indent=2),
     )
     result = client.chat_json(system=system, user=user, temperature=0.0)
 
@@ -45,6 +49,7 @@ def check_gap(gap: dict, gap_type: str,
         verdict = "reject"
         result["overall_verdict"] = verdict
     result.setdefault("verdict_summary", "")
+    result.setdefault("field_boundary_alignment", gap.get("field_boundary_alignment") or {})
     return result
 
 

@@ -44,9 +44,18 @@ def build_gap_context(end_date: date | None = None,
     ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=wd_ai)
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     mappings = ctx_builder.load_existing_mappings()
+    all_fin_field_boundaries = ctx_builder.load_fin_field_notes()
 
     ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=wd_ai)
     fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=wd_fin)
+    fin_field_boundaries = ctx_builder.select_fin_field_notes(
+        all_fin_field_boundaries,
+        [ctx_builder.paper_for_prompt(p) for p in ai_papers],
+        [ctx_builder.paper_for_prompt(p) for p in fin_papers],
+        _strip_meta(ai_trends),
+        _strip_meta(fin_trends),
+        max_fields=3,
+    )
 
     # Tier 1.1: quantified Fin-side uptake for AI concepts (algorithmic, not LLM)
     ai_concepts_to_check = uptake_mod.extract_ai_concepts_for_uptake(
@@ -67,6 +76,8 @@ def build_gap_context(end_date: date | None = None,
         "ai_trends": _strip_meta(ai_trends),
         "fin_trends": _strip_meta(fin_trends),
         "existing_mappings": [ctx_builder.mapping_for_prompt(m) for m in mappings],
+        "fin_field_boundaries": fin_field_boundaries,
+        "fin_field_boundaries_all": all_fin_field_boundaries,
         "fin_uptake": fin_uptake,    # ← Tier 1.1: hard negative-evidence ground truth
         # raw refs for downstream validation
         "_valid_ai_ids": {p["id"] for p in ai_papers},
@@ -80,7 +91,7 @@ def _strip_meta(trends: dict) -> dict:
 
 
 def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list[dict]:
-    """Prompt 04A → 15-25 one-liner candidates with diversity constraints."""
+    """Prompt 04A → 10-15 one-liner candidates with diversity constraints."""
     client = client or LLMClient()
     system, user_template = parse_prompt("04A_gap_enumerate")
     user = render_template(
@@ -90,10 +101,11 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     try:
-        result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=3000)
+        result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=5000)
     except Exception as e:
         log.warning("Enumerate LLM call failed: %s (returning [])", e)
         return []
@@ -111,22 +123,35 @@ def select_top_candidates(candidates: list[dict], top_n: int = 8) -> list[dict]:
 
     Priority order:
       1. fin_uptake_status = open_gap > partial > explored
-      2. ai_category diversity (≤ 2 per category)
+      2. field diversity (≤ 3 per field)
+      3. ai_category diversity (≤ 2 per category)
     """
     status_order = {"open_gap": 0, "partial": 1, "explored": 2}
     candidates.sort(key=lambda c: status_order.get(c.get("fin_uptake_status", "explored"), 3))
 
     per_cat: dict[str, int] = {}
+    per_field: dict[str, int] = {}
     selected = []
     for c in candidates:
         cat = c.get("ai_category", "other")
+        field_id = _candidate_field_id(c)
+        if per_field.get(field_id, 0) >= 3:
+            continue
         if per_cat.get(cat, 0) >= 2:
             continue
+        per_field[field_id] = per_field.get(field_id, 0) + 1
         per_cat[cat] = per_cat.get(cat, 0) + 1
         selected.append(c)
         if len(selected) >= top_n:
             break
     return selected
+
+
+def _candidate_field_id(candidate: dict) -> str:
+    alignment = candidate.get("field_boundary_alignment") or {}
+    if isinstance(alignment, dict):
+        return alignment.get("field_id") or candidate.get("field_id") or "unknown"
+    return candidate.get("field_id") or "unknown"
 
 
 def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
@@ -144,6 +169,7 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     if candidates:
@@ -161,9 +187,11 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
         log.warning("Theoretical gap LLM call failed: %s (returning [])", e)
         return []
     gaps = result.get("gaps", []) if isinstance(result, dict) else []
+    candidate_alignments = _candidate_alignments(candidates or [])
     for i, g in enumerate(gaps, start=1):
         g.setdefault("_id", f"TH-{i}")
         g["_type"] = "theoretical"
+        _ensure_field_alignment(g, candidate_alignments)
     log.info("Generated %d theoretical gaps", len(gaps))
     return gaps
 
@@ -180,6 +208,7 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
+        fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
         theoretical_gaps_today_json=json.dumps(theoretical_gaps, ensure_ascii=False, indent=2),
     )
@@ -192,8 +221,40 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
     for i, g in enumerate(gaps, start=1):
         g.setdefault("_id", f"ENG-{i}")
         g["_type"] = "engineering"
+        _ensure_field_alignment(g, {})
     log.info("Generated %d engineering gaps", len(gaps))
     return gaps
+
+
+def _candidate_alignments(candidates: list[dict]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for c in candidates:
+        idx = c.get("idx")
+        if idx is None:
+            continue
+        alignment = c.get("field_boundary_alignment")
+        if not isinstance(alignment, dict):
+            alignment = {
+                "field_id": c.get("field_id", ""),
+                "mechanism_family": c.get("mechanism_family", ""),
+                "open_bottleneck": c.get("open_bottleneck", ""),
+                "good_transfer_target": c.get("good_transfer_target", ""),
+                "bad_target_avoided": c.get("bad_target_avoided", ""),
+                "why_aligned": c.get("why_aligned", ""),
+            }
+        out[str(idx)] = {k: v for k, v in alignment.items() if v}
+    return out
+
+
+def _ensure_field_alignment(gap: dict, candidate_alignments: dict[str, dict]) -> None:
+    alignment = gap.get("field_boundary_alignment")
+    if isinstance(alignment, dict) and alignment.get("field_id"):
+        return
+    source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
+    if source_idx is not None and str(source_idx) in candidate_alignments:
+        gap["field_boundary_alignment"] = candidate_alignments[str(source_idx)]
+        return
+    gap.setdefault("field_boundary_alignment", {})
 
 
 # ---------- Orchestrator: generate → self-check → score ----------
@@ -217,7 +278,7 @@ def run_gap_pipeline(end_date: date | None = None,
     )
 
     # Tier 1.3: Two-stage generation
-    # Stage A: enumerate 15-25 one-liner candidates (cheap, diverse)
+    # Stage A: enumerate 10-15 one-liner candidates (cheap, diverse)
     raw_candidates = enumerate_candidates(ctx, client=client)
     top_candidates = select_top_candidates(raw_candidates, top_n=8)
     log.info("Two-stage: %d raw → %d selected candidates for refinement",
@@ -235,10 +296,20 @@ def run_gap_pipeline(end_date: date | None = None,
     valid_ai = ctx["_valid_ai_ids"]
     valid_fin = ctx["_valid_fin_ids"]
     mappings_brief = ctx["_mappings_brief"]
+    ai_method_names = _ai_method_names(ctx["ai_recent_papers"])
 
     for gap, gtype in all_gaps:
         try:
-            check = sc_mod.check_gap(gap, gtype, valid_ai, valid_fin, mappings_brief, client=client)
+            check = sc_mod.check_gap(
+                gap,
+                gtype,
+                valid_ai,
+                valid_fin,
+                mappings_brief,
+                fin_field_boundaries=ctx.get("fin_field_boundaries", []),
+                ai_method_names=ai_method_names,
+                client=client,
+            )
         except Exception as e:
             log.warning("Self-check failed for gap %s: %s (skipping)", gap.get("_id", "?"), e)
             rejected.append({"gap": gap, "type": gtype,
@@ -261,7 +332,10 @@ def run_gap_pipeline(end_date: date | None = None,
             tg = sc_mod.downgrade_to_theoretical(gap)
             try:
                 re_check = sc_mod.check_gap(tg, "theoretical", valid_ai, valid_fin,
-                                             mappings_brief, client=client)
+                                             mappings_brief,
+                                             fin_field_boundaries=ctx.get("fin_field_boundaries", []),
+                                             ai_method_names=ai_method_names,
+                                             client=client)
             except Exception as e:
                 log.warning("Re-check failed for downgraded gap %s: %s", gap.get("_id", "?"), e)
                 downgraded.append({"gap": gap, "type": gtype, "check": check, "error": str(e)})
@@ -294,6 +368,20 @@ def run_gap_pipeline(end_date: date | None = None,
         "downgraded": downgraded,
         "email_ready": email_ready,
     }
+
+
+def _ai_method_names(ai_recent_papers: list[dict]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for paper in ai_recent_papers:
+        for method in paper.get("method_primary") or []:
+            name = (method or "").strip()
+            key = name.lower()
+            if not name or key in seen:
+                continue
+            seen.add(key)
+            out.append(name)
+    return out
 
 
 # ---------- CLI smoke test ----------

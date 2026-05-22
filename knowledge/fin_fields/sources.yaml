@@ -1,0 +1,871 @@
+version: 0.1
+last_reviewed: 2026-05-22
+policy:
+  recent_boundary_cutoff: 2025-07-01
+  recent_boundary_use: "Define current frontier, open bottlenecks, and benchmark state."
+  canonical_background_use: "Define foundations, baselines, and mature methods only."
+
+fields:
+  financial_llm_agents:
+    recent_boundary:
+      - id: fintoolbench_2026
+        title: "FinToolBench: Evaluating LLM Agents for Real-World Financial Tool Use"
+        year: 2026
+        date: 2026-03-09
+        url: "https://arxiv.org/abs/2603.08262"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Runnable financial tool-use benchmark; shifts evaluation from static QA to auditable execution."
+        use_for:
+          - current_frontier
+          - standard_benchmarks
+          - open_bottlenecks
+          - agent_guidance
+      - id: finmcp_bench_2026
+        title: "FinMCP-Bench: Benchmarking LLM Agents for Real-World Financial Tool Use under the Model Context Protocol"
+        year: 2026
+        date: 2026-03
+        url: "https://arxiv.org/abs/2603.24943"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Connects financial agents to MCP-style tool infrastructure and real financial problem workflows."
+        use_for:
+          - current_frontier
+          - tool_infrastructure
+          - standard_benchmarks
+          - agent_guidance
+      - id: fintradebench_2026
+        title: "FinTradeBench: A Financial Reasoning Benchmark for LLMs"
+        year: 2026
+        date: 2026-03-19
+        url: "https://arxiv.org/abs/2603.19225"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Recent financial reasoning benchmark for analyst/trading-signal style tasks; useful for separating reasoning from raw prediction claims."
+        use_for:
+          - current_frontier
+          - financial_reasoning
+          - bad_transfer_targets
+      - id: finance_agent_benchmark_2025
+        title: "Finance Agent Benchmark: Benchmarking LLMs on Real-world Financial Research Tasks"
+        year: 2025
+        date: 2025-08
+        url: "https://arxiv.org/abs/2508.00828"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Targets real-world financial research tasks rather than generic financial QA."
+        use_for:
+          - current_frontier
+          - analyst_workflows
+          - standard_benchmarks
+      - id: finagentbench_2025
+        title: "FinAgentBench: A Benchmark Dataset for Agentic Retrieval in Financial Question Answering"
+        year: 2025
+        date: 2025-08
+        url: "https://arxiv.org/abs/2508.14052"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Focuses on iterative/agentic retrieval over financial evidence; relevant to SEC-filing analysis agents."
+        use_for:
+          - current_frontier
+          - retrieval_grounding
+          - common_failure_modes
+      - id: investorbench_2025
+        title: "INVESTORBENCH: A Benchmark for Financial Decision-Making Tasks"
+        year: 2025
+        date: 2025
+        url: "https://aclanthology.org/2025.acl-long.126.pdf"
+        venue_or_source: "ACL 2025"
+        source_type: benchmark
+        why_selected: "Decision-making benchmark for investment-style sequential tasks; useful for evaluating claims about LLM agents making financial decisions."
+        use_for:
+          - decision_workflows
+          - bad_transfer_targets
+          - standard_benchmarks
+
+    canonical_background:
+      - id: react_2022
+        title: "ReAct: Synergizing Reasoning and Acting in Language Models"
+        year: 2022
+        url: "https://arxiv.org/abs/2210.03629"
+        venue_or_source: "arXiv / ICLR-era agent foundation"
+        source_type: method
+        why_selected: "Canonical reasoning-plus-action agent pattern; baseline mental model for tool-using agents."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: toolformer_2023
+        title: "Toolformer: Language Models Can Teach Themselves to Use Tools"
+        year: 2023
+        url: "https://arxiv.org/abs/2302.04761"
+        venue_or_source: "arXiv"
+        source_type: method
+        why_selected: "Canonical early tool-use learning paper."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: gorilla_2023
+        title: "Gorilla: Large Language Model Connected with Massive APIs"
+        year: 2023
+        url: "https://arxiv.org/abs/2305.15334"
+        venue_or_source: "arXiv"
+        source_type: method
+        why_selected: "Canonical API selection/calling benchmark and model; relevant to financial tool selection claims."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: toolllm_2023
+        title: "ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs"
+        year: 2023
+        url: "https://arxiv.org/abs/2307.16789"
+        venue_or_source: "ICLR 2024"
+        source_type: method_benchmark
+        why_selected: "High-impact tool-use framework with large API corpus; baseline for financial tool-use benchmarks."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: financebench_2023
+        title: "FinanceBench: A New Benchmark for Financial Question Answering"
+        year: 2023
+        url: "https://arxiv.org/abs/2311.11944"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Canonical open-book financial QA benchmark over SEC filings; background for financial agentic retrieval."
+        use_for:
+          - mature_benchmarks
+          - retrieval_grounding
+      - id: finqa_2021
+        title: "FinQA: A Dataset of Numerical Reasoning over Financial Data"
+        year: 2021
+        url: "https://arxiv.org/abs/2109.00122"
+        venue_or_source: "EMNLP 2021"
+        source_type: dataset
+        why_selected: "Canonical financial numerical reasoning dataset; useful for distinguishing agent workflows from static numeric QA."
+        use_for:
+          - mature_benchmarks
+          - common_failure_modes
+      - id: bloomberggpt_2023
+        title: "BloombergGPT: A Large Language Model for Finance"
+        year: 2023
+        url: "https://arxiv.org/abs/2303.17564"
+        venue_or_source: "arXiv"
+        source_type: domain_model
+        why_selected: "Canonical finance-domain LLM reference; background only, not current frontier."
+        use_for:
+          - mature_methods
+          - domain_model_background
+      - id: fingpt_2023
+        title: "FinGPT: Open-Source Financial Large Language Models"
+        year: 2023
+        url: "https://arxiv.org/abs/2306.06031"
+        venue_or_source: "arXiv"
+        source_type: domain_model
+        why_selected: "Canonical open-source financial LLM ecosystem reference; background only."
+        use_for:
+          - mature_methods
+          - domain_model_background
+
+  factor_investing:
+    recent_boundary:
+      - id: alphabench_2026
+        title: "AlphaBench: Benchmarking Large Language Models in Formulaic Alpha Factor Mining"
+        year: 2026
+        date: 2026-01-26
+        url: "https://openreview.net/forum?id=d97Q8r7ZKZ"
+        venue_or_source: "ICLR 2026"
+        source_type: benchmark
+        why_selected: "Accepted ICLR 2026 benchmark that decomposes LLM-based factor mining into generation, evaluation, and search over executable alpha formulas."
+        use_for:
+          - current_frontier
+          - benchmark_signals
+          - open_bottlenecks
+          - bad_transfer_targets
+      - id: alphaagent_evo_2026
+        title: "AlphaAgentEvo: Evolution-Oriented Alpha Mining via Self-Evolving Agentic Reinforcement Learning"
+        year: 2026
+        date: 2026-01-26
+        url: "https://openreview.net/forum?id=lNmZrawUMu"
+        venue_or_source: "ICLR 2026"
+        source_type: method
+        why_selected: "Accepted ICLR 2026 alpha-mining method; frames factor discovery as self-evolving agentic RL rather than one-shot prediction."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - good_transfer_targets
+      - id: alphasage_2026
+        title: "AlphaSAGE: Structure-Aware Alpha Mining via GFlowNets for Robust Exploration"
+        year: 2026
+        date: 2026-01-26
+        url: "https://openreview.net/forum?id=zRKF4ln2VE"
+        venue_or_source: "ICLR 2026"
+        source_type: method
+        why_selected: "Accepted ICLR 2026 paper targeting sparse terminal rewards, expression-structure representation, and diverse non-correlated alpha discovery."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - open_bottlenecks
+      - id: factorminer_2026
+        title: "FactorMiner: A Self-Evolving Agent with Skills and Experience Memory for Financial Alpha Discovery"
+        year: 2026
+        date: 2026-03-03
+        url: "https://openreview.net/forum?id=TTsecyqrW3"
+        venue_or_source: "ICLR 2026 Workshop"
+        source_type: method
+        why_selected: "Recent memory-based alpha mining agent; useful for the redundancy and experience-accumulation boundary."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - open_bottlenecks
+      - id: factor_neutral_investing_2025
+        title: "Factor Investing and Factor-Neutral Investing"
+        year: 2025
+        date: 2025-11-10
+        url: "https://www.rongwang.net/files/FactorNeutralInvesting_Wang2025.pdf"
+        venue_or_source: "Working paper"
+        source_type: empirical_study
+        why_selected: "Recent critique of ML-based factor investing implementability; highlights turnover, costs, leverage, and residual mispricing as the practical boundary."
+        use_for:
+          - current_frontier
+          - open_bottlenecks
+          - bad_transfer_targets
+      - id: nonlinear_factor_investing_2025
+        title: "Non-Linear Factor Investing in the Era of Machine Learning"
+        year: 2025
+        date: 2025
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5369286"
+        venue_or_source: "SSRN"
+        source_type: empirical_study
+        why_selected: "Recent work on transparent nonlinear anomaly portfolios; useful for the interpretability and low-turnover frontier."
+        use_for:
+          - current_frontier
+          - mature_vs_open
+          - good_transfer_targets
+      - id: causal_factor_primer_2025
+        title: "Causality and Factor Investing: A Primer"
+        year: 2025
+        date: 2025-05-31
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5277078"
+        venue_or_source: "SSRN / CFA Institute Research Foundation version"
+        source_type: primer
+        why_selected: "Recent causal framing of factor investing; slightly before cutoff, used as boundary pressure on correlation-only factor discovery."
+        use_for:
+          - theoretical_support
+          - bad_transfer_targets
+          - gap_construction_rules
+      - id: co_pricing_factor_zoo_2026
+        title: "The Co-Pricing Factor Zoo"
+        year: 2026
+        date: 2026-04
+        url: "https://arxiv.org/abs/2604.04430"
+        venue_or_source: "arXiv"
+        source_type: empirical_asset_pricing
+        why_selected: "Recent factor-zoo compression/pricing paper; useful for distinguishing noisy factor proliferation from common risk proxies."
+        use_for:
+          - current_frontier
+          - mature_vs_open
+          - open_bottlenecks
+
+    canonical_background:
+      - id: fama_french_1993
+        title: "Common Risk Factors in the Returns on Stocks and Bonds"
+        year: 1993
+        url: "https://doi.org/10.1016/0304-405X(93)90023-5"
+        venue_or_source: "Journal of Financial Economics"
+        source_type: canonical_model
+        why_selected: "Canonical size/value factor model; baseline vocabulary for factor investing."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: carhart_1997
+        title: "On Persistence in Mutual Fund Performance"
+        year: 1997
+        url: "https://doi.org/10.1111/j.1540-6261.1997.tb03808.x"
+        venue_or_source: "Journal of Finance"
+        source_type: canonical_model
+        why_selected: "Canonical momentum augmentation to factor models."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: fama_french_2015
+        title: "A Five-Factor Asset Pricing Model"
+        year: 2015
+        url: "https://doi.org/10.1016/j.jfineco.2014.10.010"
+        venue_or_source: "Journal of Financial Economics"
+        source_type: canonical_model
+        why_selected: "Canonical profitability and investment factor extension."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: harvey_liu_zhu_2016
+        title: "... and the Cross-Section of Expected Returns"
+        year: 2016
+        url: "https://doi.org/10.1093/rfs/hhv059"
+        venue_or_source: "Review of Financial Studies"
+        source_type: factor_zoo_critique
+        why_selected: "Canonical multiple-testing and factor-zoo warning."
+        use_for:
+          - mature_bottlenecks
+          - bad_transfer_targets
+      - id: mclean_pontiff_2016
+        title: "Does Academic Research Destroy Stock Return Predictability?"
+        year: 2016
+        url: "https://doi.org/10.1111/jofi.12365"
+        venue_or_source: "Journal of Finance"
+        source_type: factor_decay
+        why_selected: "Canonical evidence on post-publication decay and arbitrage/crowding."
+        use_for:
+          - mature_bottlenecks
+          - open_bottlenecks
+      - id: gu_kelly_xiu_2020
+        title: "Empirical Asset Pricing via Machine Learning"
+        year: 2020
+        url: "https://doi.org/10.1093/rfs/hhaa009"
+        venue_or_source: "Review of Financial Studies"
+        source_type: ml_asset_pricing
+        why_selected: "Canonical high-impact ML asset pricing baseline."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: kelly_pruitt_su_2019
+        title: "Characteristics Are Covariances: A Unified Model of Risk and Return"
+        year: 2019
+        url: "https://doi.org/10.1016/j.jfineco.2019.05.001"
+        venue_or_source: "Journal of Financial Economics"
+        source_type: latent_factor_model
+        why_selected: "Canonical IPCA-style mechanism linking characteristics to conditional factor exposures."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: hou_xue_zhang_2020
+        title: "Replicating Anomalies"
+        year: 2020
+        url: "https://doi.org/10.1093/rfs/hhy131"
+        venue_or_source: "Review of Financial Studies"
+        source_type: replication_study
+        why_selected: "Canonical large-scale anomaly replication and robustness reference."
+        use_for:
+          - mature_bottlenecks
+          - standard_baselines
+      - id: kakushadze_2016_alpha101
+        title: "101 Formulaic Alphas"
+        year: 2016
+        url: "https://arxiv.org/abs/1601.00991"
+        venue_or_source: "arXiv"
+        source_type: formulaic_alpha_reference
+        why_selected: "Canonical formulaic alpha expression reference used by many alpha mining papers."
+        use_for:
+          - mature_methods
+          - benchmark_signals
+
+  asset_pricing_ml:
+    recent_boundary:
+      - id: aipm_2025_2026
+        title: "Artificial Intelligence Asset Pricing Models"
+        year: 2025
+        date: 2025-01-21
+        url: "https://www.nber.org/papers/w33351"
+        venue_or_source: "NBER Working Paper; revised 2026 on SSRN"
+        source_type: method
+        why_selected: "Transformer embedded in the stochastic discount factor; central recent boundary for cross-asset information sharing and SDF mechanism decomposition."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - standard_baselines
+      - id: structural_deep_conditional_pricing_2026
+        title: "Structural Deep Learning in Conditional Asset Pricing"
+        year: 2026
+        date: 2026-02-28
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4117882"
+        venue_or_source: "SSRN working paper revision"
+        source_type: method_theory
+        why_selected: "Period-by-period ML framework for time-varying risk premia with decomposition into risk-related components and mispricing."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - theoretical_support
+      - id: seemingly_virtuous_complexity_2025
+        title: "Seemingly Virtuous Complexity in Return Prediction"
+        year: 2025
+        date: 2025-08
+        url: "https://www.nber.org/papers/w34104"
+        venue_or_source: "NBER Working Paper"
+        source_type: critique
+        why_selected: "Recent high-signal critique showing complex return predictors can collapse to simple recency/volatility-timed momentum shortcuts."
+        use_for:
+          - open_bottlenecks
+          - bad_transfer_targets
+          - gap_construction_rules
+      - id: consensus_bottleneck_apm_2025
+        title: "Interpretable Deep Learning for Stock Returns: A Consensus-Bottleneck Asset Pricing Model"
+        year: 2025
+        date: 2025-12-18
+        url: "https://arxiv.org/abs/2512.16251"
+        venue_or_source: "arXiv"
+        source_type: method
+        why_selected: "Recent interpretable architecture tying belief aggregation to expected returns and pricing diagnostics."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - good_transfer_targets
+      - id: empirical_asset_pricing_gpr_2026
+        title: "Empirical Asset Pricing via Ensemble Gaussian Process Regression"
+        year: 2026
+        date: 2026-03
+        url: "https://arxiv.org/abs/2212.01048"
+        venue_or_source: "arXiv revision"
+        source_type: method
+        why_selected: "Recent revision emphasizing scalable Gaussian-process uncertainty for expected-return prediction and uncertainty-aware portfolios."
+        use_for:
+          - current_frontier
+          - uncertainty
+          - good_transfer_targets
+      - id: econometrics_to_ml_asset_pricing_2026
+        title: "From Econometrics to Machine Learning: Transforming Empirical Asset Pricing"
+        year: 2026
+        date: 2026-02
+        url: "https://ideas.repec.org/a/bla/jecsur/v40y2026i1p528-548.html"
+        venue_or_source: "Journal of Economic Surveys"
+        source_type: survey
+        why_selected: "2026 survey framing ML asset pricing through the stochastic discount factor while emphasizing theoretical rigor."
+        use_for:
+          - current_frontier
+          - mature_vs_open
+          - gap_construction_rules
+      - id: autonomous_market_intelligence_2026
+        title: "Autonomous Market Intelligence: Agentic AI Nowcasting Predicts Stock Returns"
+        year: 2026
+        date: 2026-01-17
+        url: "https://arxiv.org/abs/2601.11958"
+        venue_or_source: "arXiv"
+        source_type: empirical_prediction
+        why_selected: "Recent point-in-time live AI nowcasting dataset; useful as a boundary case for real-time information-set discipline and implementability."
+        use_for:
+          - current_frontier
+          - open_bottlenecks
+          - bad_transfer_targets
+      - id: co_pricing_factor_zoo_2026_asset_pricing
+        title: "The Co-Pricing Factor Zoo"
+        year: 2026
+        date: 2026-04
+        url: "https://arxiv.org/abs/2604.04430"
+        venue_or_source: "arXiv"
+        source_type: empirical_asset_pricing
+        why_selected: "Recent factor-zoo compression/pricing work; connects ML asset pricing to common SDF structure rather than isolated predictors."
+        use_for:
+          - current_frontier
+          - latent_structure
+          - open_bottlenecks
+
+    canonical_background:
+      - id: gu_kelly_xiu_2020_asset_pricing
+        title: "Empirical Asset Pricing via Machine Learning"
+        year: 2020
+        url: "https://doi.org/10.1093/rfs/hhaa009"
+        venue_or_source: "Review of Financial Studies"
+        source_type: ml_asset_pricing
+        why_selected: "Canonical ML benchmark for cross-sectional expected returns."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: kelly_pruitt_su_2019_asset_pricing
+        title: "Characteristics Are Covariances: A Unified Model of Risk and Return"
+        year: 2019
+        url: "https://doi.org/10.1016/j.jfineco.2019.05.001"
+        venue_or_source: "Journal of Financial Economics"
+        source_type: latent_factor_model
+        why_selected: "Canonical IPCA mechanism connecting characteristics to conditional factor exposures."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: chen_pelger_zhu_2024
+        title: "Deep Learning in Asset Pricing"
+        year: 2024
+        url: "https://doi.org/10.1287/mnsc.2023.4695"
+        venue_or_source: "Management Science"
+        source_type: no_arbitrage_deep_learning
+        why_selected: "Canonical deep SDF/no-arbitrage neural network baseline."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: gu_kelly_xiu_autoencoder_2021
+        title: "Autoencoder Asset Pricing Models"
+        year: 2021
+        url: "https://doi.org/10.1016/j.jeconom.2020.07.009"
+        venue_or_source: "Journal of Econometrics"
+        source_type: latent_factor_model
+        why_selected: "Canonical autoencoder architecture for latent conditional factor models."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: kozack_nagel_santosh_2020
+        title: "Shrinking the Cross-Section"
+        year: 2020
+        url: "https://doi.org/10.1016/j.jfineco.2019.06.008"
+        venue_or_source: "Journal of Financial Economics"
+        source_type: bayesian_sdf
+        why_selected: "Canonical shrinkage/Bayesian view on SDF construction and factor selection."
+        use_for:
+          - mature_methods
+          - theoretical_support
+      - id: lettau_pelger_2020
+        title: "Factors That Fit the Time Series and Cross-Section of Stock Returns"
+        year: 2020
+        url: "https://doi.org/10.1093/rfs/hhaa020"
+        venue_or_source: "Review of Financial Studies"
+        source_type: managed_factor_model
+        why_selected: "Canonical factor construction balancing time-series and cross-sectional pricing objectives."
+        use_for:
+          - mature_methods
+          - standard_baselines
+
+  financial_nlp:
+    recent_boundary:
+      - id: finesse_bench_2026
+        title: "FINESSE-Bench: A Hierarchical Benchmark Suite for Financial Domain Knowledge and Technical Analysis in Large Language Models"
+        year: 2026
+        date: 2026-05
+        url: "https://huggingface.co/papers/2605.15482"
+        venue_or_source: "arXiv / Hugging Face paper page"
+        source_type: benchmark
+        why_selected: "Recent hierarchical benchmark for financial domain knowledge and technical analysis; useful for difficulty scaling and domain breadth."
+        use_for:
+          - current_frontier
+          - benchmark_signals
+          - open_bottlenecks
+      - id: afib_2026
+        title: "Evaluating Financial Intelligence in Large Language Models: Benchmarking SuperInvesting AI with LLM Engines"
+        year: 2026
+        date: 2026-03-09
+        url: "https://arxiv.org/abs/2603.08704"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Multi-dimensional financial intelligence benchmark emphasizing factual accuracy, completeness, recency, consistency, and failure patterns."
+        use_for:
+          - current_frontier
+          - evaluation
+          - common_failure_modes
+      - id: ecofinbench_2025
+        title: "EcoFinBench: A Natural Language Processing Benchmark for Economics and Finance"
+        year: 2025
+        date: 2025-12-19
+        url: "https://www.bankofengland.co.uk/working-paper/2025/ecofinbench-natural-language-processing-benchmark-economics-finance"
+        venue_or_source: "Bank of England Working Paper"
+        source_type: benchmark
+        why_selected: "Recent economics/finance NLP benchmark with long texts, few examples, and text-plus-numeric sentiment settings typical of finance."
+        use_for:
+          - current_frontier
+          - benchmark_signals
+          - open_bottlenecks
+      - id: pot_financial_reasoning_2025
+        title: "Program of Thoughts for Financial Reasoning: Leveraging Dynamic In-Context Examples and Generative Retrieval"
+        year: 2025
+        date: 2025-10-15
+        url: "https://arxiv.org/abs/2510.13157"
+        venue_or_source: "arXiv"
+        source_type: method
+        why_selected: "Recent method combining generative retrieval and program-style reasoning for financial numerical reasoning over unstructured data."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - good_transfer_targets
+      - id: financial_report_llm_eval_2025
+        title: "Evaluating Large Language Models (LLMs) in Financial NLP: A Comparative Study on Financial Report Analysis"
+        year: 2025
+        date: 2025-07-24
+        url: "https://arxiv.org/abs/2507.22936"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Recent evaluation of LLMs on financial report analysis; useful for grounding report-level document understanding limitations."
+        use_for:
+          - current_frontier
+          - benchmark_signals
+          - common_failure_modes
+      - id: fintagging_2025
+        title: "FinTagging: An LLM-ready Benchmark for Extracting and Structuring Financial Information"
+        year: 2025
+        date: 2025-05-27
+        url: "https://huggingface.co/papers/2505.20650"
+        venue_or_source: "arXiv / Hugging Face paper page"
+        source_type: benchmark
+        why_selected: "Slightly before cutoff but high-value boundary for structure-aware XBRL extraction and taxonomy concept alignment."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - open_bottlenecks
+      - id: finder_financial_rag_2025
+        title: "FinDER: Financial Dataset for Question Answering and Evaluating Retrieval-Augmented Generation"
+        year: 2025
+        date: 2025-04-22
+        url: "https://arxiv.org/abs/2504.15800"
+        venue_or_source: "arXiv / ICLR 2025 workshop"
+        source_type: benchmark
+        why_selected: "Slightly before cutoff but important realistic RAG benchmark with expert-annotated financial queries and evidence."
+        use_for:
+          - current_frontier
+          - retrieval_grounding
+          - common_failure_modes
+      - id: chinese_fin_event_extraction_2025
+        title: "A Dataset for Document Level Chinese Financial Event Extraction"
+        year: 2025
+        date: 2025-05-10
+        url: "https://www.nature.com/articles/s41597-025-05083-9"
+        venue_or_source: "Scientific Data"
+        source_type: dataset
+        why_selected: "Recent document-level financial event extraction dataset; useful for event-schema and multilingual boundary."
+        use_for:
+          - current_frontier
+          - event_extraction
+          - benchmark_signals
+
+    canonical_background:
+      - id: loughran_mcdonald_2011
+        title: "When Is a Liability Not a Liability? Textual Analysis, Dictionaries, and 10-Ks"
+        year: 2011
+        url: "https://doi.org/10.1111/j.1540-6261.2011.01625.x"
+        venue_or_source: "Journal of Finance"
+        source_type: dictionary_method
+        why_selected: "Canonical finance-specific dictionary and textual analysis reference."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: finbert_2019
+        title: "FinBERT: Financial Sentiment Analysis with Pre-trained Language Models"
+        year: 2019
+        url: "https://arxiv.org/abs/1908.10063"
+        venue_or_source: "arXiv"
+        source_type: domain_model
+        why_selected: "Canonical transformer baseline for financial sentiment."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: financial_phrasebank_2014
+        title: "Good Debt or Bad Debt: Detecting Semantic Orientations in Economic Texts"
+        year: 2014
+        url: "https://doi.org/10.1007/s10579-014-9275-x"
+        venue_or_source: "Language Resources and Evaluation"
+        source_type: dataset
+        why_selected: "Canonical Financial PhraseBank sentiment dataset."
+        use_for:
+          - mature_benchmarks
+          - standard_baselines
+      - id: fiqa_2018
+        title: "FiQA Task: Financial Opinion Mining and Question Answering"
+        year: 2018
+        url: "https://sites.google.com/view/fiqa/"
+        venue_or_source: "WWW Companion / shared task"
+        source_type: benchmark
+        why_selected: "Canonical financial sentiment and QA benchmark."
+        use_for:
+          - mature_benchmarks
+          - standard_baselines
+      - id: finqa_2021_nlp
+        title: "FinQA: A Dataset of Numerical Reasoning over Financial Data"
+        year: 2021
+        url: "https://arxiv.org/abs/2109.00122"
+        venue_or_source: "EMNLP 2021"
+        source_type: dataset
+        why_selected: "Canonical numerical reasoning over financial reports."
+        use_for:
+          - mature_benchmarks
+          - common_failure_modes
+      - id: tatqa_2021
+        title: "TAT-QA: A Question Answering Benchmark on a Hybrid of Tabular and Textual Content in Finance"
+        year: 2021
+        url: "https://arxiv.org/abs/2105.07624"
+        venue_or_source: "ACL 2021"
+        source_type: dataset
+        why_selected: "Canonical table-plus-text financial QA benchmark."
+        use_for:
+          - mature_benchmarks
+          - standard_baselines
+      - id: financebench_2023_nlp
+        title: "FinanceBench: A New Benchmark for Financial Question Answering"
+        year: 2023
+        url: "https://arxiv.org/abs/2311.11944"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Canonical open-book financial QA over real SEC filings."
+        use_for:
+          - mature_benchmarks
+          - retrieval_grounding
+      - id: finben_2024
+        title: "FinBen: A Holistic Financial Benchmark for Large Language Models"
+        year: 2024
+        url: "https://arxiv.org/abs/2402.12659"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Canonical broad benchmark for financial LLM evaluation."
+        use_for:
+          - mature_benchmarks
+          - standard_baselines
+
+  portfolio_optimization:
+    recent_boundary:
+      - id: llm_portfolio_benchmark_2026
+        title: "Constructing a Portfolio Optimization Benchmark Framework for Evaluating Large Language Models"
+        year: 2026
+        date: 2026-03-10
+        url: "https://arxiv.org/abs/2603.09301"
+        venue_or_source: "arXiv"
+        source_type: benchmark
+        why_selected: "Recent benchmark testing whether LLMs can solve mathematically explicit portfolio optimization problems under constraints."
+        use_for:
+          - current_frontier
+          - benchmark_signals
+          - bad_transfer_targets
+      - id: few_shot_llm_portfolio_2026
+        title: "Few-Shot Portfolio Optimization: Can Large Language Models Outperform Quantitative Portfolio Optimization?"
+        year: 2026
+        date: 2026-04
+        url: "https://www.mdpi.com/1911-8074/19/5/320"
+        venue_or_source: "Journal of Risk and Financial Management"
+        source_type: empirical_study
+        why_selected: "Recent comparison of direct LLM allocators against classical and AI optimizers; highlights transaction costs and hybrid limitations."
+        use_for:
+          - current_frontier
+          - bad_transfer_targets
+          - gap_construction_rules
+      - id: regime_aware_agentic_portfolio_2026
+        title: "Toward a Unified Agentic Framework for Regime-Aware Portfolio Optimization with LLM Signals"
+        year: 2026
+        date: 2026-03-09
+        url: "https://link.springer.com/article/10.1007/s41060-026-01066-0"
+        venue_or_source: "International Journal of Data Science and Analytics"
+        source_type: method
+        why_selected: "Recent hybrid framework combining LLM signals with constrained optimization, regime awareness, costs, and turnover."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - good_transfer_targets
+      - id: attention_rl_portfolio_2025
+        title: "Attention-Enhanced Reinforcement Learning for Dynamic Portfolio Optimization"
+        year: 2025
+        date: 2025-10-07
+        url: "https://arxiv.org/abs/2510.06466"
+        venue_or_source: "arXiv"
+        source_type: method
+        why_selected: "Recent DRL portfolio method with Dirichlet policy, cross-sectional attention, transaction costs, and variance penalties."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - open_bottlenecks
+      - id: graph_multiagent_rl_portfolio_2025
+        title: "Graph Attention-Based Heterogeneous Multi-Agent Deep Reinforcement Learning for Adaptive Portfolio Optimization"
+        year: 2025
+        date: 2025-12-27
+        url: "https://www.nature.com/articles/s41598-025-32408-w"
+        venue_or_source: "Scientific Reports"
+        source_type: method
+        why_selected: "Recent graph/multi-agent portfolio allocation framework; useful for asset-relation and adaptive allocation boundaries."
+        use_for:
+          - current_frontier
+          - mechanism_families
+          - open_bottlenecks
+      - id: measure_theoretic_dro_portfolio_2026
+        title: "Measure-Theoretic and Distributionally Robust Portfolio Optimization"
+        year: 2026
+        date: 2026-01-08
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5888422"
+        venue_or_source: "SSRN"
+        source_type: method_theory
+        why_selected: "Recent Wasserstein/DRO framework with finite-sample stability, shrinkage equivalence, and turnover reduction claims."
+        use_for:
+          - current_frontier
+          - theoretical_support
+          - robust_optimization
+      - id: dro_downside_risk_2026
+        title: "Distributionally Robust Downside Risk Optimization"
+        year: 2026
+        date: 2026-04-15
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6446118"
+        venue_or_source: "SSRN"
+        source_type: method_theory
+        why_selected: "Recent robust portfolio framework combining downside-risk aversion with Wasserstein ambiguity."
+        use_for:
+          - current_frontier
+          - robust_optimization
+          - open_bottlenecks
+      - id: active_portfolio_robust_optimization_2025
+        title: "Active Portfolio Management Using Robust Optimization"
+        year: 2025
+        date: 2025-08-05
+        url: "https://link.springer.com/article/10.1007/s10479-025-06757-8"
+        venue_or_source: "Annals of Operations Research"
+        source_type: empirical_study
+        why_selected: "Recent robust active management application using expected shortfall and Omega ratio under uncertainty."
+        use_for:
+          - current_frontier
+          - robust_optimization
+          - standard_baselines
+
+    canonical_background:
+      - id: markowitz_1952
+        title: "Portfolio Selection"
+        year: 1952
+        url: "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x"
+        venue_or_source: "Journal of Finance"
+        source_type: canonical_model
+        why_selected: "Canonical mean-variance portfolio optimization foundation."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: black_litterman_1992
+        title: "Global Portfolio Optimization"
+        year: 1992
+        url: "https://doi.org/10.2469/faj.v48.n5.28"
+        venue_or_source: "Financial Analysts Journal"
+        source_type: canonical_model
+        why_selected: "Canonical framework combining equilibrium returns with investor views."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: ledoit_wolf_2004
+        title: "Honey, I Shrunk the Sample Covariance Matrix"
+        year: 2004
+        url: "https://doi.org/10.1016/S0047-259X(03)00096-4"
+        venue_or_source: "Journal of Portfolio Management"
+        source_type: covariance_shrinkage
+        why_selected: "Canonical covariance shrinkage baseline for portfolio optimization."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: demiguel_garlappi_uppal_2009
+        title: "Optimal Versus Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?"
+        year: 2009
+        url: "https://doi.org/10.1093/rfs/hhm075"
+        venue_or_source: "Review of Financial Studies"
+        source_type: benchmark
+        why_selected: "Canonical warning that optimized portfolios often fail against naive diversification out of sample."
+        use_for:
+          - mature_bottlenecks
+          - standard_baselines
+      - id: fabozzi_kolmogorov_focardi_2007
+        title: "Robust Portfolio Optimization and Management"
+        year: 2007
+        url: "https://doi.org/10.1002/9781119205520"
+        venue_or_source: "Book"
+        source_type: robust_optimization_reference
+        why_selected: "Canonical robust portfolio optimization reference."
+        use_for:
+          - mature_methods
+          - theoretical_support
+      - id: boyd_portfolio_transaction_costs_2017
+        title: "Multi-Period Trading via Convex Optimization"
+        year: 2017
+        url: "https://doi.org/10.1561/2400000023"
+        venue_or_source: "Foundations and Trends in Optimization"
+        source_type: transaction_cost_control
+        why_selected: "Canonical convex optimization treatment of multi-period trading with costs and constraints."
+        use_for:
+          - mature_methods
+          - standard_baselines
+      - id: risk_parity_qian_2005
+        title: "Risk Parity Portfolios"
+        year: 2005
+        url: "https://www.panagora.com/assets/PanAgora-Risk-Parity-Portfolios.pdf"
+        venue_or_source: "PanAgora working paper"
+        source_type: allocation_reference
+        why_selected: "Canonical risk-parity allocation reference."
+        use_for:
+          - mature_methods
+          - standard_baselines

@@ -10,7 +10,7 @@
 
 ## 输入数据
 
-与 Prompt 04 同样的上下文（ai_recent_papers / fin_recent_papers / ai_trends / fin_trends / existing_mappings），**外加** Prompt 04 已产出的理论型 gap 列表（可作为升级候选）。
+与 Prompt 04 同样的上下文（ai_recent_papers / fin_recent_papers / ai_trends / fin_trends / existing_mappings / fin_field_boundaries），其中 ai_recent_papers 每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`，**外加** Prompt 04 已产出的理论型 gap 列表（可作为升级候选）。
 
 ## System Prompt
 
@@ -24,11 +24,28 @@
 
 【机制层面 vs 品牌层面】（最重要的硬规则）：
 - ai_recent_papers 现在每篇都带 mechanism description（功能层）
+- 必须优先用 mechanism.one_liner / what_problem / contrast / prerequisites 构造实验方案
+- method_primary 只允许帮助定位 anchor paper，不允许作为 hypothesis / motivation 的核心概念
+- mechanism.prerequisites 必须在 experimental_roadmap.data 或 method 中被满足；若无法满足，不要输出工程型 gap
 - **hypothesis 禁止出现 AI 论文的品牌方法名**（FIPO / CEPO / Reflexion / RecursiveMAS 等）
   ✅ 用功能描述："用密集 per-step credit assignment 改进因子搜索"
   ❌ 用品牌名："用 FIPO 改进因子搜索"
 - 品牌名只能在 anchor_papers 引用证据中出现
 - motivation 描述 AI 侧新技术时必须用 mechanism vocabulary，不能依赖品牌名
+
+【正式 mappings 的状态语义】（必须用于去重）
+- existing_mappings 只包含人工确认过的 `mappings/*.md`，不包含 drafts
+- status="mature": 不要输出同方向工程型 gap
+- status="partially_explored": 只有当实验对象、机制适配或评估任务明显不同，才可输出；motivation 必须说明差异
+- status="open_gap": 可深化为更可执行实验，但不要重复同一个 hypothesis
+- status="refuted": 默认不要输出，除非新机制满足了原 mapping 失败的关键前提
+
+【Fin 领域边界 notes】（工程型 gap 必须吃透）
+- fin_field_boundaries 是人工维护的金融领域边界知识，用来说明每个方向的真实 frontier / mature mechanisms / bottlenecks
+- 工程型 gap 必须选择一个 field note 中的 mechanism family 或 open bottleneck 作为金融侧问题定义
+- motivation 和 research_context.fin_current_state 必须说明该金融机制边界，而不是只说 "Fin 侧还没有用某 AI 技术"
+- 如果实验落入 bad_transfer_targets（如无约束 LLM trading），默认不要输出；除非 roadmap 明确加入 point-in-time、cost、risk、constraint、audit 等机制来绕开失败原因
+- benchmark / paper 名字只能作为 evidence 或 baseline，不允许作为实验方案的核心组织概念
 
 观察窗口（重要）：
 - ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
@@ -48,6 +65,13 @@
      * bridge_required: 若 partial / mismatch，说明 bridge 如何搭（具体到改造架构 / 限定 Fin 子领域）
      * mismatch_severity: "low" | "medium" | "high"
      工程型 gap **必须** mismatch_severity ≤ medium 且 bridge_required 可信；否则降级为理论型
+   - field_boundary_alignment: 该 gap 对齐的 Fin field 边界 provenance
+     * field_id: 必须来自 fin_field_boundaries[*].id
+     * mechanism_family: 必须来自该 field 的 mechanism_families[*].name
+     * open_bottleneck: 尽量来自该 field 的 open_bottlenecks[*].name
+     * good_transfer_target: 尽量来自该 field 的 good_transfer_targets
+     * bad_target_avoided: 若该方向容易落入 bad_transfer_targets，说明避开了哪条
+     * why_aligned: 一句话说明该实验为什么确实落在这个金融机制边界上
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
@@ -57,6 +81,17 @@
    - metrics: 主指标 + 次指标（≥ 2 个，量化）
    - baselines: ≥ 2 个对比方法，每个带锚定论文或简要描述
    - ablations: ≥ 1 个消融实验，验证关键组件作用
+   - compute_profile: 算力 / API / 运行资源画像（只作执行信息，不代表 gap 质量，不参与评分）
+     * tier: "low" | "medium" | "high" | "very_high"
+       - low: 本地 CPU / 普通服务器即可；回归、树模型、传统 ML、少量 backtest
+       - medium: 单张 GPU 或较多 LLM API 调用；小型神经网络、embedding、LLM judge loop
+       - high: 多 GPU、长训练、大规模 RL/Transformer、LLM fine-tuning
+       - very_high: 大模型预训练、复杂 RLHF、HPC、大规模市场仿真
+     * requirements: 字符串数组，如 ["cpu"], ["single_gpu"], ["llm_api"], ["llm_finetune"], ["multi_gpu"]
+     * estimated_runtime: 如 "数小时", "1-3 天", "1-2 周"
+     * main_bottleneck: 主要瓶颈，如 "数据清洗", "LLM API 成本", "GPU 训练"
+     * summary: 一句话说明资源要求
+     * fallback: 低算力替代方案，如 "先用线性模型 / 小样本 / API judge 验证机制"
    - estimated_effort: 人月估计（如 "2-3 个月 / 1 人"）
    - key_risks: 1-3 条可能踩坑（数据可得性、训练成本、方法适配性）
    - anchor_papers: ai 和 fin 侧各自的锚定论文
@@ -76,6 +111,14 @@
 {
   "hypothesis": "用 verifier-guided self-correction 改进因子组合搜索，降低 OOS 过拟合",
   "motivation": "当前因子搜索（GP / NN）依赖 train/val 分数选优，对 OOS 性能不直接优化。AI 侧 Reflexion 思路在代码生成上证明 verifier 反馈能显著降低 false positive。迁移到因子搜索：生成候选因子 → verifier 评估 → 反思重写循环。",
+  "field_boundary_alignment": {
+    "field_id": "factor_investing",
+    "mechanism_family": "Formulaic Alpha Search",
+    "open_bottleneck": "Search budget efficiency",
+    "good_transfer_target": "Verifier-guided repair loops for invalid or nonsensical factor expressions",
+    "bad_target_avoided": "LLM-generated factor ideas evaluated only by narrative plausibility",
+    "why_aligned": "实验把 verifier 用在可执行因子搜索和 OOS 选优，而不是让 LLM 只讲因子故事"
+  },
   "research_context": {
     "fin_current_state": "因子组合搜索目前主要靠 genetic programming（gplearn）或 NN-based 端到端学习，依赖 train/val 集打分选优；Cong et al. 2024 的 alpha-GPT 引入 LLM agent 但未加 verifier 闭环。OOS 过拟合是公认痛点。",
     "ai_frontier": "2023 Reflexion 在代码生成上首次证明'生成-验证-反思'循环显著降低 false positive；2024-2025 verifier-based RM（Lightman et al. process reward, DeepMind Reflective RM）进一步把验证器变成可训练模块，对长程任务效果显著。",
@@ -102,6 +145,14 @@
       "去掉 verifier：测纯 Reflexion 模式 vs 加 verifier 的提升",
       "verifier 仅用 OOS 信号 vs 用 OOS + economic intuition"
     ],
+    "compute_profile": {
+      "tier": "medium",
+      "requirements": ["cpu", "llm_api"],
+      "estimated_runtime": "1-3 天 / 1000 个候选因子",
+      "main_bottleneck": "LLM verifier API 成本与因子回测数据清洗",
+      "summary": "回测本身 CPU 可跑，主要新增成本来自多轮 LLM verifier 调用",
+      "fallback": "先用 100 个候选因子 + 小模型/API judge 验证 verifier 是否有预测力"
+    },
     "estimated_effort": "2-3 个月 / 1 人",
     "key_risks": [
       "verifier 可能过拟合训练期因子分布，OOS 泛化差",
@@ -123,6 +174,7 @@
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
+每篇 AI 论文的 `mechanism` 字段是主要依据；`method_primary` 只用于 anchor 引用。
 
 【近期 Fin 论文 top 10】
 {fin_recent_papers_json}
@@ -130,6 +182,7 @@
 【AI 侧趋势】 {ai_trends_json}
 【Fin 侧趋势】 {fin_trends_json}
 【现有 mappings】 {existing_mappings_json}
+【Fin 领域边界 notes（机制层级，用于判断金融侧真实边界）】 {fin_field_boundaries_json}
 【Fin 侧关键词命中次数 (fin_uptake - 硬负面证据)】 {fin_uptake_json}
 对每个 AI 概念，先查 fin_uptake 的 match_strength；如果是 explored 但你坚持要提 engineering gap，必须在 motivation 中说明差异化角度。
 【今日已产出的理论型 gap（可升级为工程型）】 {theoretical_gaps_today_json}
@@ -145,6 +198,14 @@ Schema:
     {
       "hypothesis": string,
       "motivation": string,
+      "field_boundary_alignment": {
+        "field_id": string,
+        "mechanism_family": string,
+        "open_bottleneck": string,
+        "good_transfer_target": string,
+        "bad_target_avoided": string,
+        "why_aligned": string
+      },
       "structural_mapping": {
         "ai_data_structure": string,
         "fin_data_structure": string,
@@ -163,6 +224,14 @@ Schema:
         "metrics": {"primary": [string], "secondary": [string]},
         "baselines": [{"name": string, "ref": string}],
         "ablations": [string],
+        "compute_profile": {
+          "tier": "low" | "medium" | "high" | "very_high",
+          "requirements": [string],
+          "estimated_runtime": string,
+          "main_bottleneck": string,
+          "summary": string,
+          "fallback": string
+        },
         "estimated_effort": string,
         "key_risks": [string]
       },
@@ -185,3 +254,4 @@ Schema:
 | anchor_papers 编造 | pipeline 校验 paper_id 必须存在 |
 | method 步骤 < 3 步 | 自检 drop |
 | 全是 "TBD" | 自检 drop，邮件不展示 |
+| compute_profile 缺失 | 自检提示，但不影响评分；下次 prompt 强化 |

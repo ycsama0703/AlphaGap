@@ -205,24 +205,48 @@ if __name__ == "__main__":
     parser.add_argument("--window", type=int, default=WINDOW_DAYS,
                         help="Window size in days (use smaller for early-data testing)")
     parser.add_argument("--end-date", help="ISO date, default today")
+    parser.add_argument("--max-papers", type=int, default=100,
+                        help="Max mechanism papers to include in Prompt 03")
+    parser.add_argument("--no-llm", action="store_true",
+                        help="Only print aggregation payload; skip Prompt 03")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     end = date.fromisoformat(args.end_date) if args.end_date else date.today()
-    payload = aggregate_concept_counts(args.side, end, window_days=args.window)
+    payload = aggregate_mechanism_papers(
+        args.side,
+        end,
+        window_days=args.window,
+        max_papers=args.max_papers,
+    )
     print(f"\n=== Aggregation: side={args.side}, window={args.window}d, end={end} ===")
     print(f"Recent: {payload['window_recent']} | Prior: {payload['window_prior']}")
-    print(f"Concepts with count_recent >= {MIN_COUNT_RECENT}: {len(payload['concepts'])}")
-    for c in payload["concepts"][:15]:
-        print(f"  - {c['name']}: recent={c['count_recent']} prior={c['count_prior']} growth={c['growth_pct']}%")
+    print(f"Mechanism papers: {len(payload['papers'])} (cap={args.max_papers})")
+    for p in payload["papers"][:15]:
+        mech = p["mechanism"]
+        methods = ", ".join(p.get("method_primary") or [])
+        recent_flag = "recent" if p["in_recent_window"] else "prior"
+        print(f"  - [{p['paper_id']}] {p['publication_date']} · {recent_flag}")
+        if methods:
+            print(f"      method: {methods}")
+        print(f"      mechanism: {mech.get('one_liner', '')}")
+        if mech.get("what_problem"):
+            print(f"      problem: {mech['what_problem']}")
 
-    if not payload["concepts"]:
+    if not payload["papers"]:
         print("\n(not enough data to call LLM yet — need more extracted papers)")
+        sys.exit(0)
+    if args.no_llm:
         sys.exit(0)
 
     print(f"\n=== Calling Prompt 03 ===")
-    result = summarize_trends(args.side, end, window_days=args.window)
+    result = summarize_trends(
+        args.side,
+        end,
+        window_days=args.window,
+        max_papers=args.max_papers,
+    )
     for bucket in ("rising", "falling", "new_emergence", "stable_hot"):
         items = result.get(bucket, [])
         print(f"\n{bucket} ({len(items)}):")

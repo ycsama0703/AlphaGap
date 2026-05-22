@@ -31,6 +31,7 @@ from .analyze import citations as cite_mod
 from .analyze import context as ctx_builder
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
+from .analyze import mapping_draft as draft_mod
 from .analyze import mapping_update as map_mod
 from .config import PROJECT_ROOT, load_settings
 from .llm_client import LLMClient
@@ -93,6 +94,14 @@ def run_daily(target_date: date | None = None,
         client=client,
     )
 
+    # 3.75. Mapping drafts — human-reviewable, not loaded as official mappings yet.
+    log.info("Step 3/6: mapping drafts for %d accepted gaps",
+             len(gap_result["accepted"]))
+    mapping_drafts = draft_mod.generate_and_save_mapping_drafts(
+        target_date,
+        gap_result["accepted"],
+    )
+
     # 4. Mapping actions
     log.info("Step 3/6: mapping update proposals (08)")
     today_papers_for_map = gap_result["context"]["ai_recent_papers"] + \
@@ -116,6 +125,12 @@ def run_daily(target_date: date | None = None,
             ),
             "window_ai": gap_result["context"].get("window_ai_days"),
             "window_fin": gap_result["context"].get("window_fin_days"),
+            "fin_fields_selected": [
+                f.get("id") for f in gap_result["context"].get("fin_field_boundaries", [])
+            ],
+            "fin_fields_available": [
+                f.get("id") for f in gap_result["context"].get("fin_field_boundaries_all", [])
+            ],
         },
         "top_papers": gap_result["context"]["ai_recent_papers"][:5] +
                       gap_result["context"]["fin_recent_papers"][:3],
@@ -125,6 +140,7 @@ def run_daily(target_date: date | None = None,
         "engineering": gap_result["engineering"],
         "accepted": gap_result["accepted"],
         "email_ready": gap_result["email_ready"],
+        "mapping_drafts": mapping_drafts,
         "mapping_actions": mapping_actions,
     }
 

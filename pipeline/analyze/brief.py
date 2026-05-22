@@ -126,6 +126,7 @@ def generate_brief(gap_item: dict, ai_trends: dict, fin_trends: dict,
         gap_full_json=json.dumps(gap, ensure_ascii=False, indent=2),
         novelty=str(score["novelty"]),
         actionability=str(score["actionability"]),
+        theoretical_support=str(score.get("theoretical_support", "?")),
         total=str(score["total"]),
         related_papers_json=json.dumps(related, ensure_ascii=False, indent=2),
         neighbor_papers_json=json.dumps(neighbors, ensure_ascii=False, indent=2),
@@ -163,6 +164,7 @@ def _wrap_with_frontmatter(item: dict, md: str) -> str:
         f"score_total: {s['total']}\n"
         f"score_novelty: {s['novelty']}\n"
         f"score_actionability: {s['actionability']}\n"
+        f"score_theoretical_support: {s.get('theoretical_support', '')}\n"
         f"hypothesis: \"{(g.get('hypothesis') or '').replace(chr(34), chr(39))}\"\n"
         f"---\n\n"
     )
