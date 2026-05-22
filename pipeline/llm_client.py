@@ -53,10 +53,19 @@ class LLMClient:
             self._total_output_tokens += resp.usage.completion_tokens
 
         content = resp.choices[0].message.content
+        if not content or not content.strip():
+            log.error(
+                "LLM returned empty content. finish_reason=%s usage=%s",
+                resp.choices[0].finish_reason,
+                resp.usage,
+            )
+            raise ValueError(
+                f"LLM returned empty content (finish_reason={resp.choices[0].finish_reason})"
+            )
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
-            log.error("JSON parse failed: %s\ncontent=%s", e, content[:500])
+            log.error("JSON parse failed: %s\ncontent[:500]=%r", e, content[:500])
             raise
 
     @property

@@ -39,7 +39,11 @@ def propose_mapping_updates(today_papers: list[dict],
         existing_mappings_json=json.dumps(existing_mappings, ensure_ascii=False, indent=2),
         today_accepted_gaps_json=json.dumps(today_accepted_gaps, ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.2)
+    try:
+        result = client.chat_json(system=system, user=user, temperature=0.2)
+    except Exception as e:
+        log.warning("Mapping update LLM call failed: %s (returning [])", e)
+        return []
 
     actions = result.get("actions", []) if isinstance(result, dict) else []
     today_paper_ids = {p.get("id") for p in today_papers}

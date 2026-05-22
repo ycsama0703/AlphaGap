@@ -92,7 +92,11 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=3000)
+    try:
+        result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=3000)
+    except Exception as e:
+        log.warning("Enumerate LLM call failed: %s (returning [])", e)
+        return []
     candidates = result.get("candidates", []) if isinstance(result, dict) else []
 
     # Validate anchor IDs are real
@@ -151,7 +155,11 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
         user = render_template(user_template, **user_kwargs) + prefix
     else:
         user = render_template(user_template, **user_kwargs)
-    result = client.chat_json(system=system, user=user, temperature=0.6, max_tokens=4096)
+    try:
+        result = client.chat_json(system=system, user=user, temperature=0.6, max_tokens=4096)
+    except Exception as e:
+        log.warning("Theoretical gap LLM call failed: %s (returning [])", e)
+        return []
     gaps = result.get("gaps", []) if isinstance(result, dict) else []
     for i, g in enumerate(gaps, start=1):
         g.setdefault("_id", f"TH-{i}")
@@ -175,7 +183,11 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
         theoretical_gaps_today_json=json.dumps(theoretical_gaps, ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.4, max_tokens=6144)
+    try:
+        result = client.chat_json(system=system, user=user, temperature=0.4, max_tokens=6144)
+    except Exception as e:
+        log.warning("Engineering gap LLM call failed: %s (returning [])", e)
+        return []
     gaps = result.get("gaps", []) if isinstance(result, dict) else []
     for i, g in enumerate(gaps, start=1):
         g.setdefault("_id", f"ENG-{i}")
@@ -225,21 +237,41 @@ def run_gap_pipeline(end_date: date | None = None,
     mappings_brief = ctx["_mappings_brief"]
 
     for gap, gtype in all_gaps:
-        check = sc_mod.check_gap(gap, gtype, valid_ai, valid_fin, mappings_brief, client=client)
+        try:
+            check = sc_mod.check_gap(gap, gtype, valid_ai, valid_fin, mappings_brief, client=client)
+        except Exception as e:
+            log.warning("Self-check failed for gap %s: %s (skipping)", gap.get("_id", "?"), e)
+            rejected.append({"gap": gap, "type": gtype,
+                             "check": {"overall_verdict": "error", "error": str(e)}})
+            continue
         verdict = check["overall_verdict"]
 
         if verdict == "accept":
-            score = scoring_mod.score_gap(gap, gtype, mappings_brief, client=client)
+            try:
+                score = scoring_mod.score_gap(gap, gtype, mappings_brief, client=client)
+            except Exception as e:
+                log.warning("Scoring failed for gap %s: %s (skipping)", gap.get("_id", "?"), e)
+                rejected.append({"gap": gap, "type": gtype, "check": check,
+                                 "score_error": str(e)})
+                continue
             accepted.append({"gap": gap, "type": gtype, "check": check, "score": score})
         elif verdict == "reject":
             rejected.append({"gap": gap, "type": gtype, "check": check})
         elif verdict == "downgrade" and gtype == "engineering":
-            # strip engineering → theoretical, re-check, then maybe accept
             tg = sc_mod.downgrade_to_theoretical(gap)
-            re_check = sc_mod.check_gap(tg, "theoretical", valid_ai, valid_fin,
-                                         mappings_brief, client=client)
+            try:
+                re_check = sc_mod.check_gap(tg, "theoretical", valid_ai, valid_fin,
+                                             mappings_brief, client=client)
+            except Exception as e:
+                log.warning("Re-check failed for downgraded gap %s: %s", gap.get("_id", "?"), e)
+                downgraded.append({"gap": gap, "type": gtype, "check": check, "error": str(e)})
+                continue
             if re_check["overall_verdict"] == "accept":
-                score = scoring_mod.score_gap(tg, "theoretical", mappings_brief, client=client)
+                try:
+                    score = scoring_mod.score_gap(tg, "theoretical", mappings_brief, client=client)
+                except Exception as e:
+                    log.warning("Scoring failed for downgraded gap: %s", e)
+                    continue
                 accepted.append({"gap": tg, "type": "theoretical",
                                 "check": re_check, "score": score,
                                 "_downgraded_from": gap.get("_id")})
@@ -247,7 +279,6 @@ def run_gap_pipeline(end_date: date | None = None,
                 downgraded.append({"gap": gap, "type": gtype, "check": check,
                                    "recheck": re_check})
         else:
-            # retry treated as rejection in MVP
             rejected.append({"gap": gap, "type": gtype, "check": check})
 
     email_ready = [a for a in accepted if a["score"]["passes_email_threshold"]]
