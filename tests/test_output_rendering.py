@@ -1,7 +1,8 @@
 from datetime import date
 from pathlib import Path
 
-from pipeline.output.email import _gap_card_html
+from pipeline.output import email as email_mod
+from pipeline.output.email import _brief_attachments, _gap_card_html
 from pipeline.output.inbox import write_daily_inbox
 
 
@@ -93,6 +94,7 @@ def _engineering_gap_item():
             "key_risks": ["Point-in-time leakage", "Repair changes economic intent"],
         },
     })
+    item["_brief_path"] = "briefs/2026-05-25-ENG-1.md"
     return item
 
 
@@ -141,6 +143,26 @@ def test_email_engineering_card_renders_structured_experiment_panels():
     assert "Method outline" not in html
     assert "primary=[" not in html
     assert "用反馈修复 &lt;因子公式&gt;" in html
+
+
+def test_email_attaches_brief_instead_of_linking_to_unpublished_github_path(
+        monkeypatch, tmp_path: Path):
+    briefs = tmp_path / "briefs"
+    briefs.mkdir()
+    (briefs / "2026-05-25-ENG-1.md").write_text("# Deep brief\n", encoding="utf-8")
+    engineering = _engineering_gap_item()
+    monkeypatch.setattr(email_mod, "PROJECT_ROOT", tmp_path)
+
+    attachments = _brief_attachments({"email_ready": [engineering]})
+    html = _gap_card_html(engineering)
+
+    assert attachments == [{
+        "filename": "2026-05-25-ENG-1.md",
+        "content": "# Deep brief\n",
+        "content_type": "text/markdown; charset=utf-8",
+    }]
+    assert "Attached markdown" in html
+    assert "https://github.com" not in html
 
 
 def test_inbox_renders_engineering_roadmap_tables_and_baseline_link(tmp_path: Path):

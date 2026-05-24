@@ -256,7 +256,7 @@ S2 daily snapshot 提供这个信号（free tier 够用）。
 ### 你需要做的（每天）
 1. **8:00 北京时间**收邮件 (`yuncongliu0703@gmail.com`)
 2. 邮件里看 score ≥ 8 的 gap，决定值不值得 dive in
-3. 想深入：`ssh luyao4 cat ~/workspace/projects/alphagap/briefs/YYYY-MM-DD-GAPID.md`
+3. 想深入：邮件附件直接打开 engineering deep brief；服务器本地也保留在 `briefs/YYYY-MM-DD-GAPID.md`
 4. 想完整 audit：`ssh luyao4 cat ~/workspace/projects/alphagap/inbox/YYYY-MM-DD.md`
 
 ### Mapping 审批流（手动，目前还没用过）

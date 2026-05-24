@@ -16,7 +16,7 @@ from html import escape
 
 import resend
 
-from ..config import load_settings
+from ..config import PROJECT_ROOT, load_settings
 
 
 log = logging.getLogger(__name__)
@@ -30,23 +30,50 @@ def send_daily_email(d: date, payload: dict) -> None:
         f"{len(payload.get('email_ready', []))} gaps · "
         f"{len(payload.get('mapping_actions', []))} mapping actions"
     )
+    attachments = _brief_attachments(payload)
     html = _render_html(d, payload)
 
     if s.dry_run:
-        log.info("[DRY-RUN] Would send email: %s", subject)
+        log.info("[DRY-RUN] Would send email: %s (%d brief attachments)",
+                 subject, len(attachments))
         print("--- email preview (html truncated) ---")
         print(subject)
         print(html[:2000] + ("..." if len(html) > 2000 else ""))
         return
 
     resend.api_key = s.resend_api_key
-    resp = resend.Emails.send({
+    params = {
         "from": s.email_from,
         "to": s.email_to,
         "subject": subject,
         "html": html,
-    })
-    log.info("Email sent: id=%s", resp.get("id"))
+    }
+    if attachments:
+        params["attachments"] = attachments
+    resp = resend.Emails.send(params)
+    log.info("Email sent: id=%s (%d brief attachments)", resp.get("id"), len(attachments))
+
+
+def _brief_attachments(payload: dict) -> list[dict]:
+    """Load generated engineering briefs as email attachments, without exposing paths."""
+    attachments = []
+    briefs_root = (PROJECT_ROOT / "briefs").resolve()
+    for item in payload.get("email_ready", []) or []:
+        brief_path = item.get("_brief_path") or item.get("gap", {}).get("_brief_path")
+        if not brief_path:
+            continue
+        path = (PROJECT_ROOT / str(brief_path)).resolve()
+        if path.parent != briefs_root or not path.is_file():
+            item["_brief_attached"] = False
+            log.warning("Brief attachment unavailable: %s", brief_path)
+            continue
+        attachments.append({
+            "filename": path.name,
+            "content": path.read_text(encoding="utf-8"),
+            "content_type": "text/markdown; charset=utf-8",
+        })
+        item["_brief_attached"] = True
+    return attachments
 
 
 def send_failure_alert(d: date, error: str) -> None:
@@ -284,15 +311,17 @@ def _gap_card_html(item: dict) -> str:
         out.append(f"<p style='margin:8px 0;font-size:14px;'><b>AI anchor concept</b>: {_e(ai.get('concept','?'))}</p>")
         out.append(f"<p style='margin:8px 0;font-size:14px;'><b>Fin anchor</b>: {_e(fin.get('description','?')[:300])}</p>")
 
-    # Deep brief link
+    # Deep brief delivery status; generated files are attached by send_daily_email.
     brief_path = item.get("_brief_path") or g.get("_brief_path")
     if brief_path:
-        github_url = f"https://github.com/ycsama0703/AlphaGap/blob/main/{brief_path}"
+        filename = str(brief_path).rsplit("/", 1)[-1]
+        if item.get("_brief_attached"):
+            delivery = f"Attached markdown: <code>{_e(filename)}</code>"
+        else:
+            delivery = f"Generated in run workspace: <code>{_e(brief_path)}</code>"
         out.append(
             f"<p style='margin:12px 0 8px 0;font-size:14px;'>"
-            f"<b>📖 Deep brief</b>: "
-            f"<a href='{_e(github_url)}' style='color:#0066cc;text-decoration:none;'>{_e(brief_path)}</a>"
-            f"</p>"
+            f"<b>📖 Deep brief</b>: {delivery}</p>"
         )
 
     # Related papers (the main addition)
