@@ -1,6 +1,7 @@
 """Per-gap Deep Brief generator — Prompt 09.
 
-Only runs for email-ready gaps (score >= EMAIL_THRESHOLD).
+Only runs for engineering email-ready gaps. Theoretical gaps are intentionally
+kept concise until a human decides the direction merits experimental design.
 Outputs markdown directly to briefs/YYYY-MM-DD-GAPID.md.
 
 The brief is self-contained: hand it to an AI engineer or paste into Claude
@@ -135,20 +136,12 @@ def generate_brief(gap_item: dict, ai_trends: dict, fin_trends: dict,
         fin_trends_json=json.dumps(fin_trends, ensure_ascii=False, indent=2),
     )
 
-    # Call LLM — markdown output, not JSON. Bypass json mode.
-    resp = client._client.chat.completions.create(
-        model=client._model_default,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+    md = client.chat_text(
+        system=system,
+        user=user,
         temperature=0.3,
         max_tokens=4096,
     )
-    if resp.usage:
-        client._total_input_tokens += resp.usage.prompt_tokens
-        client._total_output_tokens += resp.usage.completion_tokens
-    md = resp.choices[0].message.content or ""
 
     # Add frontmatter
     return _wrap_with_frontmatter(gap_item, md)
@@ -188,13 +181,19 @@ def generate_and_save_briefs(d: date, email_ready: list[dict],
                               ai_trends: dict, fin_trends: dict,
                               existing_mappings: list[dict],
                               client: LLMClient | None = None) -> list[Path]:
-    """For each email-ready gap, generate a deep brief markdown and save.
+    """Generate deep briefs only for engineering email-ready gaps.
 
-    Returns list of paths in same order as email_ready.
+    Returns paths for engineering items in their original order.
     """
     client = client or LLMClient()
     paths: list[Path] = []
     for item in email_ready:
+        if item.get("type") != "engineering":
+            log.info(
+                "Skipping deep brief for theoretical gap %s pending human discussion",
+                item.get("gap", {}).get("_id", "?"),
+            )
+            continue
         gid = item["gap"].get("_id", "?")
         log.info("Generating brief for %s ...", gid)
         try:

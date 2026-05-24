@@ -1,4 +1,4 @@
-# Prompt 09: Gap Deep Brief（仅对 email-ready gap）
+# Prompt 09: Gap Deep Brief（仅对 engineering email-ready gap）
 
 **用途**：把通过审查 + 高分的 gap 扩展成一份**可独立递给 AI 工程师 / 合作研究者**的研究 brief。读完这份 md，对方应该完整 grasp 这个 idea 是什么、从哪开始、真正贡献在哪——不需要任何额外上下文。
 

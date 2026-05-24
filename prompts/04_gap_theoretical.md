@@ -116,6 +116,10 @@ pipeline 调用前聚合：
 - 若候选方向命中 bad_transfer_targets，默认不要输出；除非你能说明新机制如何绕开其失败原因
 - benchmark / paper 名字只可作为 evidence，不可作为 gap 的组织概念
 - 对 financial_llm_agents 这类 field，优先考虑 workflow reliability / tool routing / evidence sufficiency / trace audit / temporal validity / constraint handling，而不是泛泛 "LLM trading"
+- 如果输入的精选 candidate 带有 `risk_audit`，它来自独立对抗审计：
+  - verdict="pass"：仍需在 reasoning_chain 中回答 strongest_objection
+  - verdict="revise"：必须采用 revised_one_liner 的收窄方向，并在 structural_mapping / why_open_gap 中落实 required_revision
+  - 不得绕开已审计 candidate 另起一个未经审查的方向
 
 输出原则：
 1. 严格 JSON，无前后缀

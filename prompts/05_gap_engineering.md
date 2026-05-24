@@ -76,11 +76,11 @@
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
      * why_this_matters: 1-2 句，为什么这个 gap 值得做（学术/产业/数据可得性），潜在 impact
-   - data: 具体数据描述（数据源 + 时间范围 + 频率 + 切分方式）
+   - data: 实验决策表，必须分开说明 sources、sample、period_frequency、split_protocol、leakage_controls
    - method: 至少 3 步的方法描述，足以让人照着写伪代码
-   - metrics: 主指标 + 次指标（≥ 2 个，量化）
-   - baselines: ≥ 2 个对比方法，每个带锚定论文或简要描述
-   - ablations: ≥ 1 个消融实验，验证关键组件作用
+   - metrics: 主指标 + 次指标（≥ 2 个，量化）；每个指标说明 success_criterion 或 purpose
+   - baselines: ≥ 2 个对比方法；说明对比目的。若 baseline 是输入论文中已有的工作，必须附 citation 与其精确 paper_id，pipeline 会据此回填可点击 URL；不在输入中的论文将 paper_id 填 null，绝不编造 id 或链接
+   - ablations: ≥ 1 个消融实验；说明被检验的组件作用
    - compute_profile: 算力 / API / 运行资源画像（只作执行信息，不代表 gap 质量，不参与评分）
      * tier: "low" | "medium" | "high" | "very_high"
        - low: 本地 CPU / 普通服务器即可；回归、树模型、传统 ML、少量 backtest
@@ -97,13 +97,14 @@
    - anchor_papers: ai 和 fin 侧各自的锚定论文
 3. 必须避免：
    - 任何字段写"待定 / TBD / 后续讨论"
-   - data 写"使用合适的数据集" ← 必须给具体数据源
+   - data 写"使用合适的数据集"或挤成不区分样本、时间与切分的一段话 ← 必须结构化
    - method 写"用 LLM 处理" ← 必须说怎么用、什么模型、什么提示策略
    - baselines 只列 1 个或全是"vanilla baseline"
 4. 数量：0-3 条。质量优先，宁缺勿滥。
 
 判断是否升级理论型→工程型：
 - 如果某个理论型 gap 你能想清楚【完整实验路线】，升级为工程型并填完整 roadmap
+- 若工程型 gap 与任何今日理论型 gap 的迁移机制和 Fin 场景实质相同，必须视为升级，并在 `upgraded_from_theoretical` 填该理论 gap 的 `_id`；pipeline 会只发送工程版，避免邮件重复
 - 如果某个迁移机会本身就足够具体（不必从理论型来），直接产出工程型
 - 如果想不清楚 dataset 或 method 细节，留在理论型，不要硬凑工程型
 
@@ -125,7 +126,13 @@
     "why_this_matters": "因子搜索每年学术+产业大量重复劳动，verifier 闭环若能稳定降低 OOS 衰减率 20%+，工业界直接落地价值显著；学术上也是 'AI agent for scientific discovery' 在金融领域的首个端到端方案。"
   },
   "experimental_roadmap": {
-    "data": "美股月频，CRSP 收益数据 1963-2023，Compustat 财务数据 1970-2023。Train: 1970-2000, Val: 2001-2010, Test: 2011-2023。时序切分不打乱。",
+    "data": {
+      "sources": ["CRSP monthly returns", "Compustat annual fundamentals"],
+      "sample": "美股普通股；剔除价格低于 5 美元股票，纳入 delisting return",
+      "period_frequency": "1970-2023，月频调仓",
+      "split_protocol": "Train: 1970-2000; Val: 2001-2010; Test: 2011-2023，严格时序切分",
+      "leakage_controls": ["财报按公告日 point-in-time 对齐", "仅用当月末可观测信息形成下月持仓"]
+    },
     "method": [
       "1. Generator: 基于 GPT-4 / DeepSeek 的因子表达式生成 agent，输入历史候选 + 反思",
       "2. Verifier: 独立 LLM，输入因子定义 + 历史 OOS 表现 + 经济直觉描述，输出 0-1 评分 + 原因",
@@ -133,17 +140,23 @@
       "4. 评估：每轮 top-K 因子组合成等权多空组合"
     ],
     "metrics": {
-      "primary": ["年化 Sharpe（OOS）", "因子 IC", "turnover-adjusted return"],
-      "secondary": ["verifier 准确率（预测 OOS vs 实际 OOS 的相关性）"]
+      "primary": [
+        {"name": "年化 Sharpe（OOS）", "success_criterion": "与同预算 GP 相比显著提高"},
+        {"name": "turnover-adjusted return", "success_criterion": "扣除交易成本后仍保留提升"}
+      ],
+      "secondary": [
+        {"name": "因子 IC", "purpose": "诊断预测信号质量"},
+        {"name": "verifier 准确率", "purpose": "检验 verifier 是否预测 OOS 成败"}
+      ]
     },
     "baselines": [
-      {"name": "Vanilla GP (gplearn)", "ref": "经典符号回归"},
-      {"name": "alpha-GPT", "ref": "Cong et al. 2024，无 verifier 的 LLM agent"},
-      {"name": "Gu, Kelly, Xiu 2020 ML 因子", "ref": "深度学习因子 SOTA"}
+      {"name": "Vanilla GP (gplearn)", "type": "standard_baseline", "purpose": "匹配搜索预算的符号回归对照", "citation": "经典符号回归", "paper_id": null},
+      {"name": "alpha-GPT", "type": "prior_work", "purpose": "无 verifier 的 LLM agent 对照", "citation": "Cong et al. 2024", "paper_id": null},
+      {"name": "Gu, Kelly, Xiu 2020 ML 因子", "type": "prior_work", "purpose": "非生成式 ML 因子对照", "citation": "Gu, Kelly, Xiu (2020)", "paper_id": null}
     ],
     "ablations": [
-      "去掉 verifier：测纯 Reflexion 模式 vs 加 verifier 的提升",
-      "verifier 仅用 OOS 信号 vs 用 OOS + economic intuition"
+      {"name": "去掉 verifier", "tests_component": "隔离验证反馈循环的增量贡献"},
+      {"name": "verifier 仅使用 OOS 信号", "tests_component": "检验 economic intuition 输入是否带来增量"}
     ],
     "compute_profile": {
       "tier": "medium",
@@ -219,11 +232,26 @@ Schema:
         "why_this_matters": string
       },
       "experimental_roadmap": {
-        "data": string,
+        "data": {
+          "sources": [string],
+          "sample": string,
+          "period_frequency": string,
+          "split_protocol": string,
+          "leakage_controls": [string]
+        },
         "method": [string],
-        "metrics": {"primary": [string], "secondary": [string]},
-        "baselines": [{"name": string, "ref": string}],
-        "ablations": [string],
+        "metrics": {
+          "primary": [{"name": string, "success_criterion": string}],
+          "secondary": [{"name": string, "purpose": string}]
+        },
+        "baselines": [{
+          "name": string,
+          "type": "prior_work" | "standard_baseline" | "control",
+          "purpose": string,
+          "citation": string,
+          "paper_id": string | null
+        }],
+        "ablations": [{"name": string, "tests_component": string}],
         "compute_profile": {
           "tier": "low" | "medium" | "high" | "very_high",
           "requirements": [string],

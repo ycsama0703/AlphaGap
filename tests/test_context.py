@@ -362,3 +362,208 @@ def test_generated_theoretical_gap_inherits_candidate_field_alignment():
 
     assert gaps[0]["field_boundary_alignment"]["field_id"] == "financial_nlp"
     assert gaps[0]["field_boundary_alignment"]["mechanism_family"] == "Evidence-Grounded Financial Retrieval"
+
+
+def test_generated_theoretical_gap_inherits_candidate_risk_audit():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"gaps": [{"source_candidate_idx": 7, "hypothesis": "narrow gap"}]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+    audit = {
+        "verdict": "revise",
+        "strongest_objection": "too broad",
+        "required_revision": "restrict task",
+    }
+
+    gaps = gaps_mod.generate_theoretical_gaps(
+        ctx,
+        client=FakeClient(),
+        candidates=[{"idx": 7, "risk_audit": audit}],
+    )
+
+    assert gaps[0]["risk_audit"] == audit
+    assert gaps[0]["_origin"]["candidate_idx"] == 7
+    assert gaps[0]["_origin"]["audit_verdict"] == "revise"
+
+
+def test_theoretical_expansion_retries_candidates_individually_after_batch_failure():
+    calls = []
+
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise ValueError("truncated json")
+            return {
+                "gaps": [{
+                    "source_candidate_idx": len(calls) - 1,
+                    "hypothesis": "recovered gap",
+                }]
+            }
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+
+    gaps = gaps_mod.generate_theoretical_gaps(
+        ctx,
+        client=FakeClient(),
+        candidates=[{"idx": 1}, {"idx": 2}],
+    )
+
+    assert [gap["source_candidate_idx"] for gap in gaps] == [1, 2]
+    assert [gap["_id"] for gap in gaps] == ["TH-1", "TH-2"]
+    assert len(calls) == 3
+    assert all(call["max_tokens"] == 8192 for call in calls)
+
+
+def test_theoretical_expansion_keeps_successful_recovery_when_one_candidate_fails():
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        def chat_json(self, **kwargs):
+            self.calls += 1
+            if self.calls <= 2:
+                raise ValueError("truncated json")
+            return {"gaps": [{"source_candidate_idx": 2, "hypothesis": "survivor"}]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+
+    gaps = gaps_mod.generate_theoretical_gaps(
+        ctx,
+        client=FakeClient(),
+        candidates=[{"idx": 1}, {"idx": 2}],
+    )
+
+    assert len(gaps) == 1
+    assert gaps[0]["source_candidate_idx"] == 2
+
+
+def test_engineering_gap_inherits_theoretical_audit_origin():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"gaps": [{
+                "_id": "ENG-1",
+                "upgraded_from_theoretical": "TH-1",
+                "hypothesis": "engineering upgrade",
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+    theoretical = [{
+        "_id": "TH-1",
+        "_origin": {"candidate_idx": 7, "audit_verdict": "revise"},
+        "risk_audit": {"verdict": "revise"},
+    }]
+
+    gaps = gaps_mod.generate_engineering_gaps(ctx, theoretical, client=FakeClient())
+
+    assert gaps[0]["_origin"]["candidate_idx"] == 7
+    assert gaps[0]["_origin"]["theoretical_gap_id"] == "TH-1"
+    assert gaps[0]["risk_audit"]["verdict"] == "revise"
+
+
+def test_engineering_expansion_retries_theories_individually_after_batch_failure():
+    calls = []
+
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise ValueError("truncated json")
+            source = "TH-1" if len(calls) == 2 else "TH-2"
+            return {"gaps": [{
+                "_id": "ENG-1",
+                "upgraded_from_theoretical": source,
+                "hypothesis": f"upgrade {source}",
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+    theories = [{"_id": "TH-1"}, {"_id": "TH-2"}]
+
+    gaps = gaps_mod.generate_engineering_gaps(
+        ctx,
+        theories,
+        client=FakeClient(),
+        adversarial_mode=True,
+    )
+
+    assert [gap["_id"] for gap in gaps] == ["ENG-1", "ENG-2"]
+    assert [gap["upgraded_from_theoretical"] for gap in gaps] == ["TH-1", "TH-2"]
+    assert len(calls) == 3
+    assert all(call["max_tokens"] == 12288 for call in calls)
+
+
+def test_engineering_expansion_keeps_successful_recovery_when_one_theory_fails():
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        def chat_json(self, **kwargs):
+            self.calls += 1
+            if self.calls <= 2:
+                raise ValueError("truncated json")
+            return {"gaps": [{
+                "upgraded_from_theoretical": "TH-2",
+                "hypothesis": "surviving experiment",
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+
+    gaps = gaps_mod.generate_engineering_gaps(
+        ctx,
+        [{"_id": "TH-1"}, {"_id": "TH-2"}],
+        client=FakeClient(),
+        adversarial_mode=True,
+    )
+
+    assert len(gaps) == 1
+    assert gaps[0]["_id"] == "ENG-1"
+    assert gaps[0]["upgraded_from_theoretical"] == "TH-2"

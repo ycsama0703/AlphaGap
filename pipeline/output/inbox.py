@@ -32,7 +32,9 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         f"# AlphaGap Daily — {d.isoformat()}",
         "",
         _section_stats(payload),
+        _section_risk_audit(payload),
         _section_gaps_email(payload),       # ⭐ moved to top
+        _section_suppressed_duplicates(payload),
         _section_gaps_all(payload),
         _section_trends(payload),
         _section_top_papers(payload),
@@ -49,6 +51,15 @@ def _section_stats(p: dict) -> str:
     s = p.get("stats", {})
     selected = s.get("fin_fields_selected") or []
     available = s.get("fin_fields_available") or []
+    suppressed = p.get("duplicates_suppressed") or []
+    audit = p.get("risk_audit") or {}
+    audit_line = (
+        f"\n- Adversarial research audit: **on** | retained "
+        f"{audit.get('retained', 0)}/{audit.get('input_candidates', 0)} | "
+        f"revised {audit.get('revised', 0)} | rejected {audit.get('rejected', 0)}"
+        if audit.get("enabled")
+        else "\n- Adversarial research audit: **off**"
+    )
     field_line = ""
     if selected:
         field_line = (
@@ -61,10 +72,68 @@ def _section_stats(p: dict) -> str:
         f"- L1 extracted: {s.get('l1_done', '?')} | L2 extracted: {s.get('l2_done', '?')}\n"
         f"- Gaps generated: {len(p.get('theoretical', []))} theoretical + {len(p.get('engineering', []))} engineering\n"
         f"- Accepted: {len(p.get('accepted', []))} | Email-ready: {len(p.get('email_ready', []))}\n"
+        f"- Theoretical email duplicates suppressed: {len(suppressed)}\n"
         f"- Mapping actions proposed: {len(p.get('mapping_actions', []))}\n"
         f"{field_line}\n"
+        f"{audit_line}\n"
         f"- LLM cost: ${s.get('cost_usd', 0):.4f}"
     )
+
+
+def _section_risk_audit(p: dict) -> str:
+    audit = p.get("risk_audit") or {}
+    if not audit.get("enabled"):
+        return ""
+    lines = ["## Adversarial Research Audit (full ledger)"]
+    if audit.get("fallback"):
+        lines.append(
+            f"\n_Audit failed open; standard mode used for this run: "
+            f"{audit.get('fallback_reason', '?')}_"
+        )
+
+    decisions = audit.get("decisions", [])
+    if not decisions:
+        lines.append("\n_No candidate decisions returned._")
+        return "\n".join(lines)
+
+    for decision in decisions:
+        idx = decision.get("candidate_idx", "?")
+        verdict = decision.get("verdict", "?").upper()
+        candidate = decision.get("one_liner", "?")
+        lines.append(f"\n### Candidate {idx} — {verdict}\n")
+        lines.append(f"- Proposal: {candidate}")
+        failure_classes = decision.get("failure_classes") or []
+        if failure_classes:
+            lines.append(f"- Risk classes: {', '.join(failure_classes)}")
+        lines.append(f"- Objection: {decision.get('strongest_objection', '?')}")
+        if decision.get("required_revision"):
+            lines.append(f"- Required revision: {decision['required_revision']}")
+        if decision.get("revised_one_liner"):
+            lines.append(f"- Revised proposal: {decision['revised_one_liner']}")
+        lines.append(f"- Downstream outcome: {_audit_outcome(p, idx)}")
+    return "\n".join(lines)
+
+
+def _audit_outcome(p: dict, candidate_idx: object) -> str:
+    statuses: list[str] = []
+    email_ids = {
+        item.get("gap", {}).get("_id") for item in p.get("email_ready", [])
+    }
+    for state, items in [
+        ("accepted", p.get("accepted", [])),
+        ("rejected", p.get("rejected", [])),
+    ]:
+        for item in items:
+            gap = item.get("gap") or {}
+            origin = gap.get("_origin") or {}
+            if origin.get("candidate_idx") != candidate_idx:
+                continue
+            gid = gap.get("_id", "?")
+            suffix = " / email-ready" if gid in email_ids else ""
+            statuses.append(f"{gid}: {state}{suffix}")
+    if statuses:
+        return "; ".join(statuses)
+    return "not expanded or not selected for refinement"
 
 
 def _section_top_papers(p: dict) -> str:
@@ -142,6 +211,20 @@ def _section_gaps_email(p: dict) -> str:
     return "\n".join(out)
 
 
+def _section_suppressed_duplicates(p: dict) -> str:
+    suppressed = p.get("duplicates_suppressed") or []
+    if not suppressed:
+        return ""
+    lines = ["## Folded Theoretical Duplicates"]
+    for item in suppressed:
+        gap = item.get("gap") or {}
+        gid = gap.get("_id", "?")
+        covered_by = item.get("_email_suppressed_by", "?")
+        hypothesis = gap.get("hypothesis", "?")
+        lines.append(f"- `{gid}` folded into `{covered_by}`: {hypothesis}")
+    return "\n".join(lines)
+
+
 def _section_gaps_all(p: dict) -> str:
     accepted = p.get("accepted", [])
     below = [a for a in accepted if not a["score"]["passes_email_threshold"]]
@@ -175,6 +258,15 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
         head += f"- theoretical_support_components: {comp_text}\n"
     if s.get("email_gate"):
         head += f"- email_gate: {s.get('email_gate')} — {s.get('email_gate_reason', '')}\n"
+    origin = g.get("_origin") or {}
+    if origin.get("audit_verdict"):
+        head += (
+            f"- origin: candidate {origin.get('candidate_idx', '?')} "
+            f"({origin['audit_verdict']})"
+        )
+        if origin.get("original_one_liner"):
+            head += f" revised from: {origin['original_one_liner']}"
+        head += "\n"
 
     field = g.get("field_boundary_alignment") or {}
     if field:
@@ -229,14 +321,12 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
         roadmap = g.get("experimental_roadmap", {}) or {}
         head += f"\n**Motivation**: {g.get('motivation', '?')}\n"
         if full:
-            head += f"\n**Data**: {roadmap.get('data', '?')}\n"
+            head += _roadmap_tables_markdown(roadmap)
             method = roadmap.get("method", []) or []
             if method:
                 head += "\n**Method**:\n"
                 for m in method:
                     head += f"  - {m}\n"
-            metrics = roadmap.get("metrics", {}) or {}
-            head += f"\n**Metrics**: primary={metrics.get('primary', [])}, secondary={metrics.get('secondary', [])}\n"
             compute = roadmap.get("compute_profile") or {}
             compute_summary = compute_profile_summary(compute)
             if compute_summary:
@@ -245,16 +335,6 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
                     head += f"- summary: {compute['summary']}\n"
                 if compute.get("fallback"):
                     head += f"- fallback: {compute['fallback']}\n"
-            baselines = roadmap.get("baselines", []) or []
-            if baselines:
-                head += "\n**Baselines**:\n"
-                for b in baselines:
-                    head += f"  - {b.get('name', '?')} ({b.get('ref', '')})\n"
-            ablations = roadmap.get("ablations", []) or []
-            if ablations:
-                head += "\n**Ablations**:\n"
-                for a in ablations:
-                    head += f"  - {a}\n"
             head += f"\n**Effort**: {roadmap.get('estimated_effort', '?')}\n"
             risks = roadmap.get("key_risks", []) or []
             if risks:
@@ -294,6 +374,84 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
 
     head += "\n> Decision: [ ] accept  [ ] reject  [ ] modify (edit above, save)\n"
     return head
+
+
+def _roadmap_tables_markdown(roadmap: dict) -> str:
+    data = roadmap.get("data", "?")
+    out = "\n**Dataset**:\n\n| Item | Design |\n|---|---|\n"
+    if isinstance(data, dict):
+        sources = data.get("sources") or data.get("datasets") or "?"
+        if isinstance(sources, list):
+            sources = "; ".join(_markdown_item_text(item) for item in sources)
+        data_rows = [
+            ("Sources", sources),
+            ("Sample / unit", data.get("sample") or data.get("universe") or data.get("unit_of_observation") or "?"),
+            ("Period / frequency", data.get("period_frequency") or data.get("time_range") or data.get("frequency") or "?"),
+            ("Evaluation split", data.get("split_protocol") or data.get("split") or "?"),
+            ("Leakage controls", _markdown_inline_items(data.get("leakage_controls") or [])),
+        ]
+    else:
+        data_rows = [("Dataset & protocol", data)]
+    for label, value in data_rows:
+        out += f"| {label} | {value} |\n"
+
+    metrics = roadmap.get("metrics", {}) or {}
+    out += "\n**Metrics**:\n\n| Tier | Measure | Decision use |\n|---|---|---|\n"
+    metric_rows = []
+    for tier, items in (("Primary", metrics.get("primary") or []),
+                        ("Secondary", metrics.get("secondary") or [])):
+        for item in items:
+            if isinstance(item, dict):
+                metric_rows.append((
+                    tier,
+                    item.get("name") or item.get("metric") or "?",
+                    item.get("success_criterion") or item.get("purpose") or item.get("definition") or "-",
+                ))
+            else:
+                metric_rows.append((tier, item, "-"))
+    for tier, name, purpose in metric_rows or [("-", "Not specified", "-")]:
+        out += f"| {tier} | {name} | {purpose} |\n"
+
+    out += "\n**Baselines & Ablations**:\n\n| Class | Comparator / variant | Purpose | Source |\n|---|---|---|---|\n"
+    comparison_rows = []
+    for baseline in roadmap.get("baselines", []) or []:
+        if isinstance(baseline, dict):
+            citation = baseline.get("citation") or baseline.get("ref") or "-"
+            url = str(baseline.get("url") or "")
+            source = f"[{citation}]({url})" if url.startswith("https://") else citation
+            comparison_rows.append((
+                baseline.get("type") or baseline.get("category") or "Baseline",
+                baseline.get("name", "?"),
+                baseline.get("purpose") or baseline.get("role") or "Comparison baseline",
+                source,
+            ))
+        else:
+            comparison_rows.append(("Baseline", baseline, "Comparison baseline", "-"))
+    for ablation in roadmap.get("ablations", []) or []:
+        if isinstance(ablation, dict):
+            comparison_rows.append((
+                "Ablation",
+                ablation.get("name") or ablation.get("variant") or "?",
+                ablation.get("tests_component") or ablation.get("purpose") or "Component contribution",
+                "-",
+            ))
+        else:
+            comparison_rows.append(("Ablation", ablation, "Component contribution", "-"))
+    for values in comparison_rows or [("-", "Not specified", "-", "-")]:
+        out += f"| {' | '.join(str(value) for value in values)} |\n"
+    return out
+
+
+def _markdown_item_text(item: object) -> str:
+    if isinstance(item, dict):
+        return str(item.get("name") or item.get("dataset") or item.get("source") or "?")
+    return str(item)
+
+
+def _markdown_inline_items(items: object) -> str:
+    if isinstance(items, list):
+        return "; ".join(_markdown_item_text(item) for item in items) or "?"
+    return str(items or "?")
 
 
 def _section_mapping_actions(p: dict) -> str:

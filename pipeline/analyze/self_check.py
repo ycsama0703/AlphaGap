@@ -59,7 +59,11 @@ def downgrade_to_theoretical(eng_gap: dict) -> dict:
         "_id": eng_gap.get("_id", "").replace("ENG-", "TH-DG-"),
         "_type": "theoretical",
         "_downgraded_from": eng_gap.get("_id"),
+        "_origin": eng_gap.get("_origin", {}),
+        "risk_audit": eng_gap.get("risk_audit", {}),
         "hypothesis": eng_gap.get("hypothesis", ""),
+        "field_boundary_alignment": eng_gap.get("field_boundary_alignment", {}),
+        "structural_mapping": eng_gap.get("structural_mapping", {}),
         "ai_anchor": eng_gap.get("anchor_papers", {}).get("ai", [{}])[0]
                        if eng_gap.get("anchor_papers", {}).get("ai") else {},
         "fin_anchor": {

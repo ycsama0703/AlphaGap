@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import date
 
 from ..extract.concepts import parse_prompt, render_template
 from ..llm_client import LLMClient
 from . import context as ctx_builder
+from . import risk_audit as risk_audit_mod
 from . import scoring as scoring_mod
 from . import self_check as sc_mod
 from . import trends as trends_mod
@@ -19,6 +21,12 @@ from . import uptake as uptake_mod
 
 
 log = logging.getLogger(__name__)
+
+EMAIL_DUPLICATE_SIMILARITY_THRESHOLD = 0.42
+MAX_THEORETICAL_GAPS = 5
+THEORETICAL_EXPANSION_MAX_TOKENS = 8192
+MAX_ENGINEERING_GAPS = 3
+ENGINEERING_EXPANSION_MAX_TOKENS = 12288
 
 
 def build_gap_context(end_date: date | None = None,
@@ -172,37 +180,82 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
-    if candidates:
-        # Refine mode: tell LLM to expand THESE specific candidates
-        prefix = (
-            f"\n\n【已挑选的候选 candidates，请你只精雕这些，每条扩展为完整 gap】\n"
-            f"{json.dumps(candidates, ensure_ascii=False, indent=2)}\n"
-        )
-        user = render_template(user_template, **user_kwargs) + prefix
-    else:
-        user = render_template(user_template, **user_kwargs)
-    try:
-        result = client.chat_json(system=system, user=user, temperature=0.6, max_tokens=4096)
-    except Exception as e:
-        log.warning("Theoretical gap LLM call failed: %s (returning [])", e)
-        return []
-    gaps = result.get("gaps", []) if isinstance(result, dict) else []
+    base_user = render_template(user_template, **user_kwargs)
+    gaps = _expand_theoretical_gaps_with_recovery(
+        system=system,
+        base_user=base_user,
+        candidates=candidates,
+        client=client,
+    )
     candidate_alignments = _candidate_alignments(candidates or [])
+    candidate_audits = _candidate_audits(candidates or [])
+    candidate_origins = _candidate_origins(candidates or [])
     for i, g in enumerate(gaps, start=1):
-        g.setdefault("_id", f"TH-{i}")
+        g["_id"] = f"TH-{i}"
         g["_type"] = "theoretical"
         _ensure_field_alignment(g, candidate_alignments)
+        _ensure_risk_audit(g, candidate_audits)
+        _ensure_origin(g, candidate_origins)
     log.info("Generated %d theoretical gaps", len(gaps))
     return gaps
 
 
+def _expand_theoretical_gaps_with_recovery(*, system: str, base_user: str,
+                                           candidates: list[dict] | None,
+                                           client: LLMClient) -> list[dict]:
+    """Expand selected candidates, recovering from long or malformed batch output."""
+    try:
+        return _request_theoretical_gaps(system, base_user, candidates, client)
+    except Exception as e:
+        if not candidates or len(candidates) <= 1:
+            log.warning("Theoretical gap LLM call failed: %s (returning [])", e)
+            return []
+        log.warning(
+            "Theoretical gap batch expansion failed: %s; retrying %d candidates individually",
+            e,
+            len(candidates),
+        )
+
+    recovered: list[dict] = []
+    for candidate in candidates:
+        try:
+            recovered.extend(_request_theoretical_gaps(system, base_user, [candidate], client))
+        except Exception as e:
+            log.warning(
+                "Theoretical gap recovery failed for candidate %s: %s (skipping candidate)",
+                candidate.get("idx", "?"),
+                e,
+            )
+        if len(recovered) >= MAX_THEORETICAL_GAPS:
+            break
+    return recovered[:MAX_THEORETICAL_GAPS]
+
+
+def _request_theoretical_gaps(system: str, base_user: str,
+                              candidates: list[dict] | None,
+                              client: LLMClient) -> list[dict]:
+    user = base_user
+    if candidates:
+        user += (
+            "\n\n【已挑选的候选 candidates，请你只精雕这些，每条扩展为完整 gap】\n"
+            f"{json.dumps(candidates, ensure_ascii=False, indent=2)}\n"
+        )
+    result = client.chat_json(
+        system=system,
+        user=user,
+        temperature=0.6,
+        max_tokens=THEORETICAL_EXPANSION_MAX_TOKENS,
+    )
+    return result.get("gaps", []) if isinstance(result, dict) else []
+
+
 def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
-                              client: LLMClient | None = None) -> list[dict]:
+                              client: LLMClient | None = None,
+                              *, adversarial_mode: bool = False) -> list[dict]:
     """Prompt 05 → 0-3 engineering gap candidates (with full experimental roadmap)."""
     client = client or LLMClient()
     system, user_template = parse_prompt("05_gap_engineering")
-    user = render_template(
-        user_template,
+    user_kwargs = dict(
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
         fin_recent_papers_json=json.dumps(context["fin_recent_papers"], ensure_ascii=False, indent=2),
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
@@ -210,20 +263,94 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
-        theoretical_gaps_today_json=json.dumps(theoretical_gaps, ensure_ascii=False, indent=2),
     )
-    try:
-        result = client.chat_json(system=system, user=user, temperature=0.4, max_tokens=6144)
-    except Exception as e:
-        log.warning("Engineering gap LLM call failed: %s (returning [])", e)
-        return []
-    gaps = result.get("gaps", []) if isinstance(result, dict) else []
+    gaps = _expand_engineering_gaps_with_recovery(
+        system=system,
+        user_template=user_template,
+        user_kwargs=user_kwargs,
+        theoretical_gaps=theoretical_gaps,
+        client=client,
+        adversarial_mode=adversarial_mode,
+    )
     for i, g in enumerate(gaps, start=1):
-        g.setdefault("_id", f"ENG-{i}")
+        g["_id"] = f"ENG-{i}"
         g["_type"] = "engineering"
         _ensure_field_alignment(g, {})
+    _inherit_theoretical_origin(gaps, theoretical_gaps)
     log.info("Generated %d engineering gaps", len(gaps))
     return gaps
+
+
+def _expand_engineering_gaps_with_recovery(*, system: str, user_template: str,
+                                           user_kwargs: dict,
+                                           theoretical_gaps: list[dict],
+                                           client: LLMClient,
+                                           adversarial_mode: bool) -> list[dict]:
+    """Expand engineering gaps, isolating verbose failures by theory source."""
+    try:
+        return _request_engineering_gaps(
+            system=system,
+            user_template=user_template,
+            user_kwargs=user_kwargs,
+            theoretical_gaps=theoretical_gaps,
+            client=client,
+            adversarial_mode=adversarial_mode,
+        )
+    except Exception as e:
+        if len(theoretical_gaps) <= 1:
+            log.warning("Engineering gap LLM call failed: %s (returning [])", e)
+            return []
+        log.warning(
+            "Engineering gap batch expansion failed: %s; retrying %d theories individually",
+            e,
+            len(theoretical_gaps),
+        )
+
+    recovered: list[dict] = []
+    for theory in theoretical_gaps:
+        try:
+            recovered.extend(_request_engineering_gaps(
+                system=system,
+                user_template=user_template,
+                user_kwargs=user_kwargs,
+                theoretical_gaps=[theory],
+                client=client,
+                adversarial_mode=adversarial_mode,
+            ))
+        except Exception as e:
+            log.warning(
+                "Engineering gap recovery failed for theory %s: %s (skipping theory)",
+                theory.get("_id", "?"),
+                e,
+            )
+        if len(recovered) >= MAX_ENGINEERING_GAPS:
+            break
+    return recovered[:MAX_ENGINEERING_GAPS]
+
+
+def _request_engineering_gaps(*, system: str, user_template: str, user_kwargs: dict,
+                              theoretical_gaps: list[dict], client: LLMClient,
+                              adversarial_mode: bool) -> list[dict]:
+    user = render_template(
+        user_template,
+        **user_kwargs,
+        theoretical_gaps_today_json=json.dumps(theoretical_gaps, ensure_ascii=False, indent=2),
+    )
+    if adversarial_mode:
+        user += (
+            "\n\n【对抗审计模式已开启】\n"
+            "你只能把上方已经通过 risk audit 并产出的理论型 gap 升级为工程型。"
+            "不得创建独立于这些理论 gap 的新方向。"
+            "每条输出必须填写 upgraded_from_theoretical 为对应理论 gap 的 _id；"
+            "无法升级则输出空数组。\n"
+        )
+    result = client.chat_json(
+        system=system,
+        user=user,
+        temperature=0.4,
+        max_tokens=ENGINEERING_EXPANSION_MAX_TOKENS,
+    )
+    return result.get("gaps", []) if isinstance(result, dict) else []
 
 
 def _candidate_alignments(candidates: list[dict]) -> dict[str, dict]:
@@ -246,6 +373,31 @@ def _candidate_alignments(candidates: list[dict]) -> dict[str, dict]:
     return out
 
 
+def _candidate_audits(candidates: list[dict]) -> dict[str, dict]:
+    return {
+        str(candidate["idx"]): candidate["risk_audit"]
+        for candidate in candidates
+        if candidate.get("idx") is not None and isinstance(candidate.get("risk_audit"), dict)
+    }
+
+
+def _candidate_origins(candidates: list[dict]) -> dict[str, dict]:
+    origins: dict[str, dict] = {}
+    for candidate in candidates:
+        idx = candidate.get("idx")
+        if idx is None:
+            continue
+        audit = candidate.get("risk_audit") or {}
+        origins[str(idx)] = {
+            "candidate_idx": idx,
+            "candidate_one_liner": candidate.get("one_liner", ""),
+            "original_one_liner": candidate.get("original_one_liner", ""),
+            "audit_verdict": audit.get("verdict", ""),
+            "audit_failure_classes": audit.get("failure_classes", []),
+        }
+    return origins
+
+
 def _ensure_field_alignment(gap: dict, candidate_alignments: dict[str, dict]) -> None:
     alignment = gap.get("field_boundary_alignment")
     if isinstance(alignment, dict) and alignment.get("field_id"):
@@ -257,6 +409,145 @@ def _ensure_field_alignment(gap: dict, candidate_alignments: dict[str, dict]) ->
     gap.setdefault("field_boundary_alignment", {})
 
 
+def _ensure_risk_audit(gap: dict, candidate_audits: dict[str, dict]) -> None:
+    source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
+    if source_idx is not None and str(source_idx) in candidate_audits:
+        gap["risk_audit"] = candidate_audits[str(source_idx)]
+
+
+def _ensure_origin(gap: dict, candidate_origins: dict[str, dict]) -> None:
+    source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
+    if source_idx is not None and str(source_idx) in candidate_origins:
+        gap["_origin"] = candidate_origins[str(source_idx)]
+
+
+def _inherit_theoretical_origin(engineering_gaps: list[dict],
+                                theoretical_gaps: list[dict]) -> None:
+    theories = {gap.get("_id"): gap for gap in theoretical_gaps}
+    for gap in engineering_gaps:
+        source_id = gap.get("upgraded_from_theoretical")
+        source = theories.get(source_id)
+        if not source:
+            continue
+        origin = dict(source.get("_origin") or {})
+        origin["theoretical_gap_id"] = source_id
+        gap["_origin"] = origin
+        if source.get("risk_audit"):
+            gap["risk_audit"] = source["risk_audit"]
+
+
+def _only_reviewed_theoretical_gaps(gaps: list[dict], candidates: list[dict]) -> list[dict]:
+    approved_idxs = {str(c.get("idx")) for c in candidates if c.get("idx") is not None}
+    retained = [
+        gap for gap in gaps
+        if str(gap.get("source_candidate_idx") or gap.get("candidate_idx")) in approved_idxs
+    ]
+    if len(retained) != len(gaps):
+        log.warning(
+            "Adversarial mode dropped %d theoretical gaps without an audited candidate source",
+            len(gaps) - len(retained),
+        )
+    return retained
+
+
+def _only_upgraded_engineering_gaps(gaps: list[dict], theoretical_gaps: list[dict]) -> list[dict]:
+    theory_ids = {gap.get("_id") for gap in theoretical_gaps}
+    retained = [
+        gap for gap in gaps
+        if gap.get("upgraded_from_theoretical") in theory_ids
+    ]
+    if len(retained) != len(gaps):
+        log.warning(
+            "Adversarial mode dropped %d engineering gaps that bypassed reviewed theory",
+            len(gaps) - len(retained),
+        )
+    return retained
+
+
+def suppress_theoretical_email_duplicates(email_ready: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Suppress theoretical email entries already covered by an engineering one.
+
+    Engineering gaps contain the actionable experiment and therefore win when
+    both channels describe the same mechanism transfer. Suppressed theoretical
+    gaps remain accepted for audit; downstream delivery and mapping drafting can
+    omit them using the suppression marker attached here.
+    """
+    engineering = [item for item in email_ready if item.get("type") == "engineering"]
+    kept: list[dict] = []
+    suppressed: list[dict] = []
+
+    for item in email_ready:
+        if item.get("type") != "theoretical":
+            kept.append(item)
+            continue
+
+        duplicate = _find_covering_engineering_gap(item, engineering)
+        if duplicate is None:
+            kept.append(item)
+            continue
+
+        engineering_item, reason = duplicate
+        item["_email_suppressed_by"] = engineering_item["gap"].get("_id", "?")
+        item["_email_suppressed_reason"] = reason
+        suppressed.append(item)
+
+    return kept, suppressed
+
+
+def _find_covering_engineering_gap(theoretical: dict,
+                                   engineering: list[dict]) -> tuple[dict, str] | None:
+    theoretical_gap = theoretical.get("gap") or {}
+    theory_id = theoretical_gap.get("_id")
+    for item in engineering:
+        engineering_gap = item.get("gap") or {}
+        upgraded_from = (
+            engineering_gap.get("upgraded_from_theoretical")
+            or engineering_gap.get("upgraded_from_theoretical_id")
+        )
+        if theory_id and upgraded_from == theory_id:
+            return item, f"explicit engineering upgrade of {theory_id}"
+
+        if not _same_field_mechanism_boundary(theoretical_gap, engineering_gap):
+            continue
+        similarity = scoring_mod._similarity(
+            _duplicate_comparison_text(theoretical_gap),
+            _duplicate_comparison_text(engineering_gap),
+        )
+        if similarity >= EMAIL_DUPLICATE_SIMILARITY_THRESHOLD:
+            return item, (
+                "same Fin mechanism boundary and overlapping transfer hypothesis "
+                f"(similarity={similarity:.3f})"
+            )
+    return None
+
+
+def _same_field_mechanism_boundary(left: dict, right: dict) -> bool:
+    left_field = left.get("field_boundary_alignment") or {}
+    right_field = right.get("field_boundary_alignment") or {}
+    keys = ("field_id", "mechanism_family")
+    return all(
+        left_field.get(key)
+        and left_field.get(key) == right_field.get(key)
+        for key in keys
+    )
+
+
+def _duplicate_comparison_text(gap: dict) -> str:
+    ai_anchor = gap.get("ai_anchor") or {}
+    fin_anchor = gap.get("fin_anchor") or {}
+    structural = gap.get("structural_mapping") or {}
+    return " ".join(
+        str(value)
+        for value in [
+            gap.get("hypothesis", ""),
+            ai_anchor.get("concept", ""),
+            fin_anchor.get("description", ""),
+            structural.get("bridge_required", ""),
+        ]
+        if value
+    )
+
+
 # ---------- Orchestrator: generate → self-check → score ----------
 
 def run_gap_pipeline(end_date: date | None = None,
@@ -264,6 +555,7 @@ def run_gap_pipeline(end_date: date | None = None,
                      window_days_ai: int | None = None,
                      window_days_fin: int | None = None,
                      window_days: int | None = None,
+                     adversarial_review: bool | None = None,
                      client: LLMClient | None = None) -> dict:
     """Full daily gap pipeline (asymmetric windows by default).
 
@@ -271,6 +563,10 @@ def run_gap_pipeline(end_date: date | None = None,
       {context, theoretical, engineering, accepted, rejected, downgraded, email_ready}
     """
     client = client or LLMClient()
+    adversarial_review = (
+        os.getenv("ADVERSARIAL_GAP_REVIEW", "false").lower() == "true"
+        if adversarial_review is None else adversarial_review
+    )
     ctx = build_gap_context(
         end_date, ai_top=ai_top, fin_top=fin_top,
         window_days_ai=window_days_ai, window_days_fin=window_days_fin,
@@ -280,13 +576,41 @@ def run_gap_pipeline(end_date: date | None = None,
     # Tier 1.3: Two-stage generation
     # Stage A: enumerate 10-15 one-liner candidates (cheap, diverse)
     raw_candidates = enumerate_candidates(ctx, client=client)
-    top_candidates = select_top_candidates(raw_candidates, top_n=8)
-    log.info("Two-stage: %d raw → %d selected candidates for refinement",
-             len(raw_candidates), len(top_candidates))
+    if adversarial_review:
+        reviewed_candidates, risk_audit = risk_audit_mod.audit_candidates(
+            raw_candidates, ctx, client=client,
+        )
+    else:
+        reviewed_candidates = raw_candidates
+        risk_audit = {
+            "enabled": False,
+            "mode": "standard",
+            "input_candidates": len(raw_candidates),
+            "retained": len(raw_candidates),
+            "decisions": [],
+        }
+    gate_enforced = adversarial_review and not risk_audit.get("fallback", False)
+    risk_audit["gate_enforced"] = gate_enforced
+    top_candidates = select_top_candidates(reviewed_candidates, top_n=8)
+    log.info(
+        "Two-stage%s: %d raw → %d post-audit → %d selected candidates for refinement",
+        " + adversarial audit" if adversarial_review else "",
+        len(raw_candidates), len(reviewed_candidates), len(top_candidates),
+    )
 
     # Stage B: refine selected candidates into full gaps
-    th_gaps = generate_theoretical_gaps(ctx, client=client, candidates=top_candidates)
-    eng_gaps = generate_engineering_gaps(ctx, th_gaps, client=client)
+    if gate_enforced and not top_candidates:
+        th_gaps = []
+        eng_gaps = []
+    else:
+        th_gaps = generate_theoretical_gaps(ctx, client=client, candidates=top_candidates)
+        if gate_enforced:
+            th_gaps = _only_reviewed_theoretical_gaps(th_gaps, top_candidates)
+        eng_gaps = generate_engineering_gaps(
+            ctx, th_gaps, client=client, adversarial_mode=gate_enforced,
+        )
+        if gate_enforced:
+            eng_gaps = _only_upgraded_engineering_gaps(eng_gaps, th_gaps)
     all_gaps = [(g, "engineering") for g in eng_gaps] + [(g, "theoretical") for g in th_gaps]
 
     accepted: list[dict] = []
@@ -355,18 +679,25 @@ def run_gap_pipeline(end_date: date | None = None,
         else:
             rejected.append({"gap": gap, "type": gtype, "check": check})
 
-    email_ready = [a for a in accepted if a["score"]["passes_email_threshold"]]
-    log.info("Gap pipeline: %d generated → %d accepted → %d email-ready ($%.4f)",
-             len(all_gaps), len(accepted), len(email_ready), client.estimate_cost_usd())
+    email_ready_raw = [a for a in accepted if a["score"]["passes_email_threshold"]]
+    email_ready, duplicates_suppressed = suppress_theoretical_email_duplicates(email_ready_raw)
+    log.info(
+        "Gap pipeline: %d generated → %d accepted → %d email-ready "
+        "(%d theoretical duplicates suppressed) ($%.4f)",
+        len(all_gaps), len(accepted), len(email_ready), len(duplicates_suppressed),
+        client.estimate_cost_usd(),
+    )
 
     return {
         "context": ctx,
+        "risk_audit": risk_audit,
         "theoretical": th_gaps,
         "engineering": eng_gaps,
         "accepted": accepted,
         "rejected": rejected,
         "downgraded": downgraded,
         "email_ready": email_ready,
+        "duplicates_suppressed": duplicates_suppressed,
     }
 
 

@@ -119,14 +119,16 @@ Step 1.5 Citation snapshot       S2 batch API → citation_snapshots 表
 Step 2   Gap pipeline            analyze/gaps.py:run_gap_pipeline
             ↓
          ├─ Trends               Prompt 03 × 2 (AI 90d / Fin 180d)
+         ├─ Candidate pool       Prompt 04A
+         ├─ Risk audit (可选)    Prompt 04B (ADVERSARIAL_GAP_REVIEW=true)
          ├─ Theoretical gaps     Prompt 04
          ├─ Engineering gaps     Prompt 05 (可升级理论型)
-         ├─ Self-check           Prompt 06 (11 项 checklist)
+         ├─ Self-check           Prompt 06 (结构 + 实证风险 checklist)
          └─ Scoring              Prompt 07 (novelty + actionability)
             ↓
 Step 2.5 Enrich gaps             从 DB 查 anchor papers 完整信息
             ↓
-Step 3   Deep briefs             Prompt 09 (仅对 score ≥ 8 的 gap)
+Step 3   Deep briefs             Prompt 09 (仅对 email-ready engineering gap)
             ↓                    → briefs/YYYY-MM-DD-GAPID.md
 Step 4   Mapping update          Prompt 08 → 状态变更 / 新建提议
             ↓
@@ -143,6 +145,8 @@ alphagap/
 │   ├── 01_concept_extract_l1.md   必抽：method_primary / domain / tags / side
 │   ├── 02_concept_extract_l2.md   高优先级加抽：building_blocks / claims / benchmarks
 │   ├── 03_trend_summary.md        rising/falling/new/stable_hot 分类
+│   ├── 04A_gap_enumerate.md       mechanism-level 候选池
+│   ├── 04B_gap_risk_audit.md      可选对抗审计 gate
 │   ├── 04_gap_theoretical.md      conceptual hypothesis（无实验路线）
 │   ├── 05_gap_engineering.md      含完整实验路线（data/method/metrics/baselines/...）
 │   ├── 06_gap_self_check.md       11 项 checklist → accept/reject/downgrade/retry
@@ -172,6 +176,7 @@ alphagap/
 │   │   ├── context.py             从 DB 取 top papers / mappings 给 prompts
 │   │   ├── trends.py              Prompt 03 + 概念频率聚合（AI 90d / Fin 180d）
 │   │   ├── gaps.py                Prompt 04/05 + orchestrator (run_gap_pipeline)
+│   │   ├── risk_audit.py          Prompt 04B 对抗审计（可选）
 │   │   ├── self_check.py          Prompt 06 + downgrade helper
 │   │   ├── scoring.py             Prompt 07 + EMAIL_THRESHOLD=8
 │   │   ├── enrich.py              用 DB 给 gap 的 anchor papers 加 title/url/affil
@@ -279,14 +284,45 @@ cd ~/workspace/projects/alphagap
 
 ### `.env`（不进 git，每台机器独立）
 ```
+LLM_PROVIDER=deepseek                         # deepseek | mimo | openrouter | custom
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_MODEL_DEFAULT=deepseek-chat       # 必须 chat，不要默认 reasoner（贵 5-10x）
 DEEPSEEK_MODEL_REASONING=deepseek-reasoner
+OPENROUTER_API_KEY=                         # 仅 LLM_PROVIDER=openrouter 时读取
+OPENROUTER_MODEL_DEFAULT=                   # 例如供应商给出的 model slug
+OPENROUTER_MODEL_REASONING=
+MIMO_API_KEY=                               # 仅 LLM_PROVIDER=mimo 时读取
+MIMO_BASE_URL=                              # MiMo dedicated base URL
+MIMO_MODEL_DEFAULT=mimo-v2.5-pro
 RESEND_API_KEY=re_...
 EMAIL_FROM=onboarding@resend.dev           # Resend 测试地址（不需要域名验证）
 EMAIL_TO=yuncongliu0703@gmail.com          # 必须是 Resend 注册账号邮箱
 ALPHAGAP_DB_PATH=db/alphagap.sqlite
+ADVERSARIAL_GAP_REVIEW=false                # true = 开启候选级对抗审计 gate
 ```
+
+`LLM_PROVIDER` 默认保持 `deepseek`，因此服务器日常任务不会因新增接口而更换模型。用 OpenRouter 测模型时，将 key 仅放在本机 `.env`，设置 provider 与模型 slug 后可先做最小 JSON 兼容测试：
+
+```bash
+.venv/bin/python -m pipeline.llm_client probe \
+  --provider openrouter --model '<provider/model-slug>'
+```
+
+若测试通过，再触发完整流程：
+
+```bash
+LLM_PROVIDER=openrouter LLM_MODEL_DEFAULT='<provider/model-slug>' \
+  LLM_MODEL_REASONING='<provider/model-slug>' \
+  .venv/bin/python -m pipeline.main daily --no-commit
+```
+
+也可以检索当前可见 model IDs：
+
+```bash
+.venv/bin/python -m pipeline.llm_client models --provider openrouter --contains '<keyword>'
+```
+
+项目的 prompt 依赖严格 JSON 输出；某个 OpenRouter 模型即便可聊天，也必须先通过 `probe`，再用于真实发信。OpenRouter 返回的 `usage.cost` 会直接记入本次运行的 cost；DeepSeek 仍按本地价格配置估算。
 
 ### `prompts/*.md`
 每个 prompt md 文件结构必须包含两段：
@@ -416,7 +452,7 @@ python3 -m venv .venv
 mkdir -p logs
 
 cp .env.example .env
-nano .env  # 填 DEEPSEEK_API_KEY, RESEND_API_KEY 等
+nano .env  # 选择 LLM_PROVIDER，并填对应 provider key、RESEND_API_KEY 等
 
 .venv/bin/python -m pipeline.db init
 .venv/bin/python -m pipeline.main daily --dry-run --no-commit  # 验证

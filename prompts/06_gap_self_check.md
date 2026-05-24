@@ -38,15 +38,20 @@ D. reasoning_depth: reasoning_chain 是否 ≥ 3 步且每步有信息量
 E. evidence_for_gap: why_open_gap 是否给出实质负面证据（不只是"我没见过"）
 
 工程型专属检查：
-F. data_concrete: experimental_roadmap.data 是否具体（数据源 + 时间范围 + 频率，不是"合适的数据"）
+F. data_concrete: experimental_roadmap.data 是否具体且结构完整（sources + sample + period_frequency + split_protocol + leakage_controls，不是"合适的数据"）
 G. method_detail: method 是否 ≥ 3 步且每步可照写伪代码
-H. metrics_quantitative: primary metrics ≥ 2 个且可量化（不是"看看表现"）
-I. baselines_sufficient: baselines ≥ 2 个，且每个有锚定论文或明确描述
-J. ablations_present: ablations ≥ 1 个，且每个验证某个具体组件
+H. metrics_quantitative: primary metrics ≥ 2 个且可量化，并各自说明 success_criterion（不是"看看表现"）
+I. baselines_sufficient: baselines ≥ 2 个，且每个说明比较目的；若声称是输入中已有 work，必须带可核验 citation 与精确 paper_id，由 pipeline 回填 URL
+J. ablations_present: ablations ≥ 1 个，且每个通过 tests_component 说明验证哪个具体组件
 K. no_TBD: roadmap 任何字段不含 "TBD / 待定 / 后续讨论"
 N. compute_profile_present: experimental_roadmap.compute_profile 是否提供算力 / API / 运行资源画像
    - 这是执行信息，不代表 gap 质量
    - 缺失时标 fail，但不要因此 reject/downgrade；在 verdict_summary 里提醒即可
+P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的金融实证风险
+   - 涉及资产收益、factor、portfolio 或 trading 时，data/method 必须说明 point-in-time 或时间切分、避免 look-ahead leakage / survivorship bias 的方式，并处理 transaction cost / turnover / constraint 中适用项
+   - 涉及 financial agent / NLP workflow 时，必须说明 temporal validity、证据追溯、约束或审计中适用项
+   - baselines 必须尽量匹配信息集、搜索预算、LLM/API 调用预算或算力预算；否则结果不可归因
+   - 若实验与某项风险明显无关，可以 pass，但 reason 必须简短说明不适用原因
 
 输出规则：
 1. 严格 JSON，无前后缀
@@ -54,7 +59,7 @@ N. compute_profile_present: experimental_roadmap.compute_profile 是否提供算
 3. 给出 overall_verdict：
    - "accept": 除 N 外所有相关检查都 pass（N 缺失只作提醒）
    - "reject": A / B / M / O 不通过，或 L 显示 mismatch=high + bridge 不可信（致命）
-   - "downgrade": 工程型未通过 F-K 任一，或 L 显示要降级 → 降级为理论型
+   - "downgrade": 工程型未通过 F-K / P 任一，或 L 显示要降级 → 降级为理论型
    - "retry": 通用检查通过，但其他可修复字段失败（如 reasoning_chain 浅但 anchor 合法），建议重生成
 4. 客观判断，不要找借口让 gap 通过
 ```
@@ -102,7 +107,8 @@ N. compute_profile_present: experimental_roadmap.compute_profile 是否提供算
     "I_baselines_sufficient": {"pass": bool, "reason": string} | null,
     "J_ablations_present": {"pass": bool, "reason": string} | null,
     "K_no_TBD": {"pass": bool, "reason": string} | null,
-    "N_compute_profile_present": {"pass": bool, "reason": string} | null
+    "N_compute_profile_present": {"pass": bool, "reason": string} | null,
+    "P_empirical_validity_risk": {"pass": bool, "reason": string} | null
   },
   "overall_verdict": "accept" | "reject" | "downgrade" | "retry",
   "field_boundary_alignment": object,  // 原样返回 gap.field_boundary_alignment，便于 pipeline 记录
@@ -129,7 +135,8 @@ N. compute_profile_present: experimental_roadmap.compute_profile 是否提供算
     "I_baselines_sufficient": {"pass": true, "reason": ""},
     "J_ablations_present": {"pass": true, "reason": ""},
     "K_no_TBD": {"pass": true, "reason": ""},
-    "N_compute_profile_present": {"pass": false, "reason": "缺算力资源画像，不影响质量判断"}
+    "N_compute_profile_present": {"pass": false, "reason": "缺算力资源画像，不影响质量判断"},
+    "P_empirical_validity_risk": {"pass": false, "reason": "未说明时序防泄漏及交易成本处理"}
   },
   "overall_verdict": "downgrade",
   "verdict_summary": "method 不够细，roadmap 不完整，降为理论型保留 hypothesis"

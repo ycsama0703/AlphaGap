@@ -58,13 +58,40 @@ def _lookup(conn, paper_ids: set[str]) -> dict[str, dict]:
     return out
 
 
+def _baseline_paper_ids(gap: dict) -> set[str]:
+    roadmap = gap.get("experimental_roadmap") or {}
+    return {
+        baseline["paper_id"]
+        for baseline in roadmap.get("baselines", []) or []
+        if isinstance(baseline, dict) and baseline.get("paper_id")
+    }
+
+
+def _attach_baseline_links(gap: dict, papers: dict[str, dict]) -> None:
+    """Only surface links resolved from the local paper store."""
+    roadmap = gap.get("experimental_roadmap") or {}
+    for baseline in roadmap.get("baselines", []) or []:
+        if not isinstance(baseline, dict):
+            continue
+        baseline.pop("url", None)
+        paper = papers.get(baseline.get("paper_id"))
+        if not paper:
+            continue
+        baseline["url"] = paper.get("url") or f"https://arxiv.org/abs/{paper['id']}"
+        if not baseline.get("citation"):
+            baseline["citation"] = paper.get("title") or paper["id"]
+
+
 def enrich_gap(gap: dict) -> dict:
     """Attach `_related_papers` field with AI/Fin paper details from DB."""
     ai_ids, fin_ids = _collect_paper_ids(gap)
+    baseline_ids = _baseline_paper_ids(gap)
     with db.connect() as conn:
         ai_papers = _lookup(conn, ai_ids)
         fin_papers = _lookup(conn, fin_ids)
+        baseline_papers = _lookup(conn, baseline_ids)
 
+    _attach_baseline_links(gap, baseline_papers)
     gap["_related_papers"] = {
         "ai": [
             {

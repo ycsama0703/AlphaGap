@@ -77,17 +77,27 @@ def run_daily(target_date: date | None = None,
     # 2-3. Gap pipeline (also calls trends internally)
     log.info("Step 2/6: gap pipeline (trends + 04 + 05 + 06 + 07)")
     client = LLMClient()
-    gap_result = gaps_mod.run_gap_pipeline(target_date, client=client)
+    gap_result = gaps_mod.run_gap_pipeline(
+        target_date, adversarial_review=s.adversarial_gap_review, client=client,
+    )
 
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])
+    downstream_accepted = [
+        item for item in gap_result["accepted"]
+        if not item.get("_email_suppressed_by")
+    ]
 
-    # 3.5. Deep brief for each email-ready gap → briefs/YYYY-MM-DD-GAPID.md
-    log.info("Step 3/6: deep briefs (Prompt 09) for %d email-ready gaps",
-             len(gap_result["email_ready"]))
+    # 3.5. Deep briefs are generated only after an idea reaches engineering form.
+    engineering_email_ready = [
+        item for item in gap_result["email_ready"]
+        if item.get("type") == "engineering"
+    ]
+    log.info("Step 3/6: deep briefs (Prompt 09) for %d engineering email-ready gaps",
+             len(engineering_email_ready))
     brief_mod.generate_and_save_briefs(
         target_date,
-        gap_result["email_ready"],
+        engineering_email_ready,
         gap_result["context"]["ai_trends"],
         gap_result["context"]["fin_trends"],
         gap_result["context"]["existing_mappings"],
@@ -95,11 +105,11 @@ def run_daily(target_date: date | None = None,
     )
 
     # 3.75. Mapping drafts — human-reviewable, not loaded as official mappings yet.
-    log.info("Step 3/6: mapping drafts for %d accepted gaps",
-             len(gap_result["accepted"]))
+    log.info("Step 3/6: mapping drafts for %d unique accepted gaps",
+             len(downstream_accepted))
     mapping_drafts = draft_mod.generate_and_save_mapping_drafts(
         target_date,
-        gap_result["accepted"],
+        downstream_accepted,
     )
 
     # 4. Mapping actions
@@ -109,7 +119,7 @@ def run_daily(target_date: date | None = None,
     mapping_actions = map_mod.propose_mapping_updates(
         today_papers_for_map,
         gap_result["context"]["existing_mappings"],
-        gap_result["accepted"],
+        downstream_accepted,
         client=client,
     )
 
@@ -139,7 +149,11 @@ def run_daily(target_date: date | None = None,
         "theoretical": gap_result["theoretical"],
         "engineering": gap_result["engineering"],
         "accepted": gap_result["accepted"],
+        "rejected": gap_result["rejected"],
+        "downgraded": gap_result["downgraded"],
         "email_ready": gap_result["email_ready"],
+        "duplicates_suppressed": gap_result.get("duplicates_suppressed", []),
+        "risk_audit": gap_result.get("risk_audit", {"enabled": False}),
         "mapping_drafts": mapping_drafts,
         "mapping_actions": mapping_actions,
     }
