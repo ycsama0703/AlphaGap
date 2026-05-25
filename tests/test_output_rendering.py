@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 from pathlib import Path
 
@@ -149,7 +150,8 @@ def test_email_attaches_brief_instead_of_linking_to_unpublished_github_path(
         monkeypatch, tmp_path: Path):
     briefs = tmp_path / "briefs"
     briefs.mkdir()
-    (briefs / "2026-05-25-ENG-1.md").write_text("# Deep brief\n", encoding="utf-8")
+    markdown = "# Deep brief\n\n中文机制说明\n"
+    (briefs / "2026-05-25-ENG-1.md").write_text(markdown, encoding="utf-8")
     engineering = _engineering_gap_item()
     monkeypatch.setattr(email_mod, "PROJECT_ROOT", tmp_path)
 
@@ -158,9 +160,10 @@ def test_email_attaches_brief_instead_of_linking_to_unpublished_github_path(
 
     assert attachments == [{
         "filename": "2026-05-25-ENG-1.md",
-        "content": "# Deep brief\n",
+        "content": base64.b64encode(markdown.encode("utf-8")).decode("ascii"),
         "content_type": "text/markdown; charset=utf-8",
     }]
+    assert base64.b64decode(attachments[0]["content"]).decode("utf-8") == markdown
     assert "Attached markdown" in html
     assert "https://github.com" not in html
 

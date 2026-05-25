@@ -10,6 +10,7 @@ NOT a paper digest — full audit lives in inbox/YYYY-MM-DD.md.
 """
 from __future__ import annotations
 
+import base64
 import logging
 from datetime import date
 from html import escape
@@ -69,7 +70,7 @@ def _brief_attachments(payload: dict) -> list[dict]:
             continue
         attachments.append({
             "filename": path.name,
-            "content": path.read_text(encoding="utf-8"),
+            "content": base64.b64encode(path.read_bytes()).decode("ascii"),
             "content_type": "text/markdown; charset=utf-8",
         })
         item["_brief_attached"] = True
