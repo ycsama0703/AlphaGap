@@ -3,6 +3,7 @@ from pipeline.analyze.scoring import (
     _support_components,
     email_gate_result,
     mapping_novelty_cap,
+    score_gap,
 )
 
 
@@ -128,3 +129,22 @@ def test_theoretical_email_gate_rejects_low_support():
     )
 
     assert result["passes"] is False
+
+
+def test_scoring_uses_reasoning_model():
+    class FakeClient:
+        def __init__(self):
+            self.kwargs = None
+
+        def chat_json(self, **kwargs):
+            self.kwargs = kwargs
+            return {
+                "novelty": 8,
+                "actionability": 8,
+                "theoretical_support_components": {},
+            }
+
+    client = FakeClient()
+    score_gap({}, "engineering", [], client=client)
+
+    assert client.kwargs["reasoning"] is True

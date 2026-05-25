@@ -1,4 +1,4 @@
-from pipeline.analyze.self_check import downgrade_to_theoretical
+from pipeline.analyze.self_check import check_gap, downgrade_to_theoretical
 from pipeline.config import load_prompt
 
 
@@ -27,3 +27,18 @@ def test_downgrade_preserves_audit_origin_and_boundary():
     assert downgraded["risk_audit"]["verdict"] == "revise"
     assert downgraded["field_boundary_alignment"]["field_id"] == "factor_investing"
     assert downgraded["structural_mapping"]["match_status"] == "partial"
+
+
+def test_self_check_uses_reasoning_model():
+    class FakeClient:
+        def __init__(self):
+            self.kwargs = None
+
+        def chat_json(self, **kwargs):
+            self.kwargs = kwargs
+            return {"overall_verdict": "accept"}
+
+    client = FakeClient()
+    check_gap({}, "theoretical", set(), set(), [], client=client)
+
+    assert client.kwargs["reasoning"] is True

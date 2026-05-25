@@ -113,7 +113,13 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     try:
-        result = client.chat_json(system=system, user=user, temperature=0.8, max_tokens=5000)
+        result = client.chat_json(
+            system=system,
+            user=user,
+            temperature=0.8,
+            reasoning=True,
+            max_tokens=5000,
+        )
     except Exception as e:
         log.warning("Enumerate LLM call failed: %s (returning [])", e)
         return []
@@ -244,6 +250,7 @@ def _request_theoretical_gaps(system: str, base_user: str,
         system=system,
         user=user,
         temperature=0.6,
+        reasoning=True,
         max_tokens=THEORETICAL_EXPANSION_MAX_TOKENS,
     )
     return result.get("gaps", []) if isinstance(result, dict) else []
@@ -348,6 +355,7 @@ def _request_engineering_gaps(*, system: str, user_template: str, user_kwargs: d
         system=system,
         user=user,
         temperature=0.4,
+        reasoning=True,
         max_tokens=ENGINEERING_EXPANSION_MAX_TOKENS,
     )
     return result.get("gaps", []) if isinstance(result, dict) else []

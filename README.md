@@ -137,6 +137,11 @@ Step 5   Inbox markdown          inbox/YYYY-MM-DD.md (审批用)
 Step 6   Email                   Resend HTML digest → yuncongliu0703@gmail.com
 ```
 
+模型路由：论文 L1/L2 批量抽取和 mapping update 使用 `DEEPSEEK_MODEL_DEFAULT`；
+Trends、Candidate pool、Risk audit、Theoretical/Engineering gaps、Self-check、
+Scoring 与 Deep briefs 使用 `DEEPSEEK_MODEL_REASONING`。默认 DeepSeek 配置下，
+前者为 `deepseek-chat`，研究判断链路为 `deepseek-reasoner`。
+
 ### 文件树（重要的）
 
 ```
@@ -286,8 +291,8 @@ cd ~/workspace/projects/alphagap
 ```
 LLM_PROVIDER=deepseek                         # deepseek | mimo | openrouter | custom
 DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_MODEL_DEFAULT=deepseek-chat       # 必须 chat，不要默认 reasoner（贵 5-10x）
-DEEPSEEK_MODEL_REASONING=deepseek-reasoner
+DEEPSEEK_MODEL_DEFAULT=deepseek-chat       # 批量抽取与机械更新步骤
+DEEPSEEK_MODEL_REASONING=deepseek-reasoner # gap detection 判断链路与 deep brief
 OPENROUTER_API_KEY=                         # 仅 LLM_PROVIDER=openrouter 时读取
 OPENROUTER_MODEL_DEFAULT=                   # 例如供应商给出的 model slug
 OPENROUTER_MODEL_REASONING=

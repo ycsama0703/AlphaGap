@@ -47,6 +47,7 @@ def audit_candidates(candidates: list[dict], context: dict,
             system=system,
             user=user,
             temperature=0.0,
+            reasoning=True,
             max_tokens=RISK_AUDIT_MAX_TOKENS,
         )
     except Exception as exc:

@@ -62,3 +62,30 @@ def test_engineering_email_ready_gap_generates_deep_brief(monkeypatch, tmp_path:
     assert calls == ["ENG-1"]
     assert len(paths) == 1
     assert item["_brief_path"] == "2026-05-23-ENG-1.md"
+
+
+def test_deep_brief_uses_reasoning_model(monkeypatch):
+    class FakeClient:
+        def __init__(self):
+            self.kwargs = None
+
+        def chat_text(self, **kwargs):
+            self.kwargs = kwargs
+            return "# generated"
+
+    monkeypatch.setattr(brief, "find_neighbor_papers", lambda *args, **kwargs: [])
+    item = {
+        "type": "engineering",
+        "gap": {"_id": "ENG-1", "hypothesis": "test"},
+        "score": {
+            "novelty": 8,
+            "actionability": 8,
+            "theoretical_support": 8,
+            "total": 8,
+        },
+    }
+    client = FakeClient()
+
+    brief.generate_brief(item, {}, {}, [], client=client)
+
+    assert client.kwargs["reasoning"] is True

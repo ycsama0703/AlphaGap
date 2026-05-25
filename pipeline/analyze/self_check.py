@@ -41,7 +41,7 @@ def check_gap(gap: dict, gap_type: str,
         fin_field_boundaries_json=json.dumps(fin_field_boundaries or [], ensure_ascii=False, indent=2),
         ai_method_names_json=json.dumps(ai_method_names or [], ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.0)
+    result = client.chat_json(system=system, user=user, temperature=0.0, reasoning=True)
 
     verdict = result.get("overall_verdict", "reject")
     if verdict not in ("accept", "reject", "downgrade", "retry"):

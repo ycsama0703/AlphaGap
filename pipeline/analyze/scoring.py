@@ -44,7 +44,7 @@ def score_gap(gap: dict, gap_type: str,
         related_papers_brief_json=json.dumps(
             related_papers_brief or [], ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.0)
+    result = client.chat_json(system=system, user=user, temperature=0.0, reasoning=True)
 
     novelty = _clamp_int(result.get("novelty"), 1, 10)
     actionability = _clamp_int(result.get("actionability"), 1, 10)

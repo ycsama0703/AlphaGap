@@ -140,6 +140,7 @@ def generate_brief(gap_item: dict, ai_trends: dict, fin_trends: dict,
         system=system,
         user=user,
         temperature=0.3,
+        reasoning=True,
         max_tokens=4096,
     )
 

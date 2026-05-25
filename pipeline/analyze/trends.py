@@ -162,7 +162,13 @@ def summarize_trends(side: str, recent_end: date | None = None,
     )
     # mechanism-clustering can produce long output; give it more headroom
     try:
-        result = client.chat_json(system=system, user=user, temperature=0.2, max_tokens=8192)
+        result = client.chat_json(
+            system=system,
+            user=user,
+            temperature=0.2,
+            reasoning=True,
+            max_tokens=8192,
+        )
     except Exception as e:
         log.warning("Trend LLM call failed for side=%s: %s (returning empty trends)", side, e)
         return {"rising": [], "falling": [], "new_emergence": [], "stable_hot": [],

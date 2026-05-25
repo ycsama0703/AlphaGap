@@ -68,6 +68,7 @@ def test_audit_candidates_keeps_pass_revises_candidate_and_drops_reject():
     assert summary["retained"] == 2
     assert summary["decisions"][1]["failure_classes"] == ["mechanism_transfer"]
     assert client.calls[0]["max_tokens"] == 12288
+    assert client.calls[0]["reasoning"] is True
 
 
 def test_audit_candidates_fails_open_when_model_call_fails():

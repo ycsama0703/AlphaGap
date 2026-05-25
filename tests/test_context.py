@@ -327,6 +327,31 @@ def test_select_top_candidates_diversifies_by_field():
     assert any(c["field_boundary_alignment"]["field_id"] == "financial_nlp" for c in selected)
 
 
+def test_candidate_enumeration_uses_reasoning_model():
+    calls = []
+
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            calls.append(kwargs)
+            return {"candidates": [{"ai_anchor_paper_id": "ai1"}]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+        "_valid_ai_ids": {"ai1"},
+    }
+
+    candidates = gaps_mod.enumerate_candidates(ctx, client=FakeClient())
+
+    assert len(candidates) == 1
+    assert calls[0]["reasoning"] is True
+
+
 def test_generated_theoretical_gap_inherits_candidate_field_alignment():
     class FakeClient:
         def chat_json(self, **kwargs):
@@ -430,6 +455,7 @@ def test_theoretical_expansion_retries_candidates_individually_after_batch_failu
     assert [gap["_id"] for gap in gaps] == ["TH-1", "TH-2"]
     assert len(calls) == 3
     assert all(call["max_tokens"] == 8192 for call in calls)
+    assert all(call["reasoning"] is True for call in calls)
 
 
 def test_theoretical_expansion_keeps_successful_recovery_when_one_candidate_fails():
@@ -531,6 +557,7 @@ def test_engineering_expansion_retries_theories_individually_after_batch_failure
     assert [gap["upgraded_from_theoretical"] for gap in gaps] == ["TH-1", "TH-2"]
     assert len(calls) == 3
     assert all(call["max_tokens"] == 12288 for call in calls)
+    assert all(call["reasoning"] is True for call in calls)
 
 
 def test_engineering_expansion_keeps_successful_recovery_when_one_theory_fails():
