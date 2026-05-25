@@ -27,6 +27,7 @@ THEORETICAL_EMAIL_TOTAL_THRESHOLD = 6.5
 THEORETICAL_EMAIL_NOVELTY_THRESHOLD = 9
 THEORETICAL_EMAIL_ACTIONABILITY_THRESHOLD = 4
 THEORETICAL_EMAIL_SUPPORT_THRESHOLD = 5.0
+SCORING_MAX_TOKENS = 8192
 
 
 def score_gap(gap: dict, gap_type: str,
@@ -44,7 +45,13 @@ def score_gap(gap: dict, gap_type: str,
         related_papers_brief_json=json.dumps(
             related_papers_brief or [], ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.0, reasoning=True)
+    result = client.chat_json(
+        system=system,
+        user=user,
+        temperature=0.0,
+        reasoning=True,
+        max_tokens=SCORING_MAX_TOKENS,
+    )
 
     novelty = _clamp_int(result.get("novelty"), 1, 10)
     actionability = _clamp_int(result.get("actionability"), 1, 10)

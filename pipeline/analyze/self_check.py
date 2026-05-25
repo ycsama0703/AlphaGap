@@ -21,6 +21,8 @@ from ..llm_client import LLMClient
 
 log = logging.getLogger(__name__)
 
+SELF_CHECK_MAX_TOKENS = 8192
+
 
 def check_gap(gap: dict, gap_type: str,
               valid_ai_ids: set[str], valid_fin_ids: set[str],
@@ -41,7 +43,13 @@ def check_gap(gap: dict, gap_type: str,
         fin_field_boundaries_json=json.dumps(fin_field_boundaries or [], ensure_ascii=False, indent=2),
         ai_method_names_json=json.dumps(ai_method_names or [], ensure_ascii=False, indent=2),
     )
-    result = client.chat_json(system=system, user=user, temperature=0.0, reasoning=True)
+    result = client.chat_json(
+        system=system,
+        user=user,
+        temperature=0.0,
+        reasoning=True,
+        max_tokens=SELF_CHECK_MAX_TOKENS,
+    )
 
     verdict = result.get("overall_verdict", "reject")
     if verdict not in ("accept", "reject", "downgrade", "retry"):

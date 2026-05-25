@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 #   Fin: SSRN slow + annual journals → 180d for meaningful negative evidence
 WINDOW_DAYS_AI = 90
 WINDOW_DAYS_FIN = 180
+TREND_SUMMARY_MAX_TOKENS = 16384
 WINDOW_DAYS = WINDOW_DAYS_AI    # legacy default for backwards compat
 MIN_COUNT_RECENT = 3            # concepts with < 3 papers in window are noise
 
@@ -167,7 +168,7 @@ def summarize_trends(side: str, recent_end: date | None = None,
             user=user,
             temperature=0.2,
             reasoning=True,
-            max_tokens=8192,
+            max_tokens=TREND_SUMMARY_MAX_TOKENS,
         )
     except Exception as e:
         log.warning("Trend LLM call failed for side=%s: %s (returning empty trends)", side, e)

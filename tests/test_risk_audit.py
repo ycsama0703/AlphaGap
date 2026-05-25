@@ -1,4 +1,4 @@
-from pipeline.analyze.risk_audit import audit_candidates
+from pipeline.analyze.risk_audit import RISK_AUDIT_MAX_TOKENS, audit_candidates
 
 
 class FakeClient:
@@ -67,7 +67,7 @@ def test_audit_candidates_keeps_pass_revises_candidate_and_drops_reject():
     assert summary["rejected"] == 1
     assert summary["retained"] == 2
     assert summary["decisions"][1]["failure_classes"] == ["mechanism_transfer"]
-    assert client.calls[0]["max_tokens"] == 12288
+    assert client.calls[0]["max_tokens"] == RISK_AUDIT_MAX_TOKENS
     assert client.calls[0]["reasoning"] is True
 
 

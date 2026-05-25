@@ -23,10 +23,11 @@ from . import uptake as uptake_mod
 log = logging.getLogger(__name__)
 
 EMAIL_DUPLICATE_SIMILARITY_THRESHOLD = 0.42
+CANDIDATE_ENUMERATION_MAX_TOKENS = 16384
 MAX_THEORETICAL_GAPS = 5
-THEORETICAL_EXPANSION_MAX_TOKENS = 8192
+THEORETICAL_EXPANSION_MAX_TOKENS = 16384
 MAX_ENGINEERING_GAPS = 3
-ENGINEERING_EXPANSION_MAX_TOKENS = 12288
+ENGINEERING_EXPANSION_MAX_TOKENS = 32768
 
 
 def build_gap_context(end_date: date | None = None,
@@ -118,7 +119,7 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
             user=user,
             temperature=0.8,
             reasoning=True,
-            max_tokens=5000,
+            max_tokens=CANDIDATE_ENUMERATION_MAX_TOKENS,
         )
     except Exception as e:
         log.warning("Enumerate LLM call failed: %s (returning [])", e)

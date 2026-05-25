@@ -23,6 +23,8 @@ from ..llm_client import LLMClient
 
 log = logging.getLogger(__name__)
 
+DEEP_BRIEF_MAX_TOKENS = 16384
+
 
 def find_neighbor_papers(gap: dict, side: str, top_k: int = 5) -> list[dict]:
     """Find papers in DB that share concepts with the gap.
@@ -141,7 +143,7 @@ def generate_brief(gap_item: dict, ai_trends: dict, fin_trends: dict,
         user=user,
         temperature=0.3,
         reasoning=True,
-        max_tokens=4096,
+        max_tokens=DEEP_BRIEF_MAX_TOKENS,
     )
 
     # Add frontmatter

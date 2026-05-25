@@ -16,7 +16,7 @@ from ..llm_client import LLMClient
 log = logging.getLogger(__name__)
 
 MIN_REVIEW_COVERAGE = 0.8
-RISK_AUDIT_MAX_TOKENS = 12288
+RISK_AUDIT_MAX_TOKENS = 24576
 
 
 def audit_candidates(candidates: list[dict], context: dict,

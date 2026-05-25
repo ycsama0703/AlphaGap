@@ -454,7 +454,7 @@ def test_theoretical_expansion_retries_candidates_individually_after_batch_failu
     assert [gap["source_candidate_idx"] for gap in gaps] == [1, 2]
     assert [gap["_id"] for gap in gaps] == ["TH-1", "TH-2"]
     assert len(calls) == 3
-    assert all(call["max_tokens"] == 8192 for call in calls)
+    assert all(call["max_tokens"] == gaps_mod.THEORETICAL_EXPANSION_MAX_TOKENS for call in calls)
     assert all(call["reasoning"] is True for call in calls)
 
 
@@ -556,7 +556,7 @@ def test_engineering_expansion_retries_theories_individually_after_batch_failure
     assert [gap["_id"] for gap in gaps] == ["ENG-1", "ENG-2"]
     assert [gap["upgraded_from_theoretical"] for gap in gaps] == ["TH-1", "TH-2"]
     assert len(calls) == 3
-    assert all(call["max_tokens"] == 12288 for call in calls)
+    assert all(call["max_tokens"] == gaps_mod.ENGINEERING_EXPANSION_MAX_TOKENS for call in calls)
     assert all(call["reasoning"] is True for call in calls)
 
 

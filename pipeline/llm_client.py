@@ -56,6 +56,32 @@ class LLMClient:
     ) -> dict[str, Any]:
         """Call LLM and parse JSON output. Raises on parse failure."""
         model = self._model_reasoning if reasoning else self._model_default
+        try:
+            return self._chat_json_once(
+                model=model,
+                system=system,
+                user=user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except (ValueError, json.JSONDecodeError) as exc:
+            if not reasoning or self._model_reasoning == self._model_default:
+                raise
+            log.warning(
+                "Reasoning JSON response unusable (%s); retrying with default model %s",
+                exc,
+                self._model_default,
+            )
+            return self._chat_json_once(
+                model=self._model_default,
+                system=system,
+                user=user,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+    def _chat_json_once(self, *, model: str, system: str, user: str,
+                        temperature: float, max_tokens: int) -> dict[str, Any]:
         resp = self._client.chat.completions.create(
             model=model,
             messages=[

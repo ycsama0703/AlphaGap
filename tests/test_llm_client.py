@@ -75,3 +75,46 @@ def test_generic_model_override_applies_to_openrouter(monkeypatch):
     monkeypatch.setenv("LLM_MODEL_DEFAULT", "vendor/test-model")
 
     assert load_settings().llm_model_default == "vendor/test-model"
+
+
+def test_reasoning_json_length_failure_retries_with_default_model(monkeypatch):
+    requests = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            requests.append(kwargs)
+            if len(requests) == 1:
+                return SimpleNamespace(
+                    usage=SimpleNamespace(prompt_tokens=10, completion_tokens=100),
+                    choices=[SimpleNamespace(
+                        finish_reason="length",
+                        message=SimpleNamespace(content=""),
+                    )],
+                )
+            return SimpleNamespace(
+                usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+                choices=[SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"ok": true}'),
+                )],
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_MODEL_DEFAULT", "vendor/chat")
+    monkeypatch.setenv("OPENROUTER_MODEL_REASONING", "vendor/reasoner")
+    monkeypatch.delenv("LLM_MODEL_DEFAULT", raising=False)
+    monkeypatch.delenv("LLM_MODEL_REASONING", raising=False)
+    monkeypatch.setattr(llm_mod, "OpenAI", FakeOpenAI)
+
+    result = llm_mod.LLMClient().chat_json(
+        system="system", user="user", reasoning=True, max_tokens=12345,
+    )
+
+    assert result == {"ok": True}
+    assert [call["model"] for call in requests] == ["vendor/reasoner", "vendor/chat"]
+    assert all(call["max_tokens"] == 12345 for call in requests)
