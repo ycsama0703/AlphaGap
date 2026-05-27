@@ -9,6 +9,9 @@ def test_engineering_empirical_validity_check_is_part_of_prompt():
     assert "look-ahead leakage" in prompt
     assert "survivorship bias" in prompt
     assert "baseline" in prompt
+    assert 'theoretical `frontier_extension`' in prompt
+    assert "Q. first_experiment_go_no_go" in prompt
+    assert "proposed_cell.new_failure_mode" in prompt
 
 
 def test_downgrade_preserves_audit_origin_and_boundary():
@@ -16,6 +19,8 @@ def test_downgrade_preserves_audit_origin_and_boundary():
         "_id": "ENG-1",
         "_origin": {"candidate_idx": 7, "audit_verdict": "revise"},
         "risk_audit": {"verdict": "revise"},
+        "opportunity_mode": "frontier_extension",
+        "proposed_cell": {"new_failure_mode": "test"},
         "field_boundary_alignment": {"field_id": "factor_investing"},
         "structural_mapping": {"match_status": "partial"},
         "hypothesis": "test",
@@ -25,6 +30,8 @@ def test_downgrade_preserves_audit_origin_and_boundary():
 
     assert downgraded["_origin"]["candidate_idx"] == 7
     assert downgraded["risk_audit"]["verdict"] == "revise"
+    assert downgraded["opportunity_mode"] == "frontier_extension"
+    assert downgraded["proposed_cell"]["new_failure_mode"] == "test"
     assert downgraded["field_boundary_alignment"]["field_id"] == "factor_investing"
     assert downgraded["structural_mapping"]["match_status"] == "partial"
 

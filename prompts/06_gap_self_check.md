@@ -31,6 +31,9 @@ O. field_boundary_alignment: 是否对齐 Fin 领域边界 notes
    - mechanism_family 必须能在该 field 的 mechanism_families[*].name 中找到
    - gap 应该落在至少一个 mechanism family / open bottleneck / good transfer target 上
    - 若命中 bad_transfer_targets 且没有解释如何规避，fail
+   - `opportunity_mode="grounded_transfer"` 的 gap 必须提供有效的 `field_boundary_alignment.transfer_cell_id`
+   - engineering gap 只能是 `grounded_transfer`，且 data / metrics / baselines / failure mode 与对应 cell 的 experiment_anchor 一致；否则 O fail
+   - theoretical `frontier_extension` 可不提供 transfer_cell_id，但必须填写 `proposed_cell.new_failure_mode / ai_intervention_class / experiment_anchor_sketch / why_existing_cells_insufficient`，并说明它不是已有 cell 的重命名；否则 O fail
    - 只按论文或 benchmark 名字组织、没有金融机制边界，fail
 
 理论型专属检查：
@@ -52,6 +55,10 @@ P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的�
    - 涉及 financial agent / NLP workflow 时，必须说明 temporal validity、证据追溯、约束或审计中适用项
    - baselines 必须尽量匹配信息集、搜索预算、LLM/API 调用预算或算力预算；否则结果不可归因
    - 若实验与某项风险明显无关，可以 pass，但 reason 必须简短说明不适用原因
+Q. first_experiment_go_no_go: 是否提供最小可执行的首次实验
+   - 必须包含 question / minimal_setup / go_criterion / stop_criterion / estimated_runtime
+   - minimal_setup 必须同时说明最小数据切片、比较对象和至少一个关键消融
+   - go/stop 必须是可观察结果，而不是"效果好则继续"
 
 输出规则：
 1. 严格 JSON，无前后缀
@@ -59,7 +66,7 @@ P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的�
 3. 给出 overall_verdict：
    - "accept": 除 N 外所有相关检查都 pass（N 缺失只作提醒）
    - "reject": A / B / M / O 不通过，或 L 显示 mismatch=high + bridge 不可信（致命）
-   - "downgrade": 工程型未通过 F-K / P 任一，或 L 显示要降级 → 降级为理论型
+   - "downgrade": 工程型未通过 F-K / P / Q 任一，或 L 显示要降级 → 降级为理论型
    - "retry": 通用检查通过，但其他可修复字段失败（如 reasoning_chain 浅但 anchor 合法），建议重生成
 4. 客观判断，不要找借口让 gap 通过
 ```
@@ -87,6 +94,9 @@ P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的�
 【Fin 领域边界 notes（用于检查是否对齐真实金融边界）】
 {fin_field_boundaries_json}
 
+【Active Fin transfer cells（用于检查实验锚点）】
+{fin_transfer_cells_json}
+
 【近期 AI 论文 method_primary 名称（用于品牌名检查）】
 {ai_method_names_json}
 
@@ -108,7 +118,8 @@ P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的�
     "J_ablations_present": {"pass": bool, "reason": string} | null,
     "K_no_TBD": {"pass": bool, "reason": string} | null,
     "N_compute_profile_present": {"pass": bool, "reason": string} | null,
-    "P_empirical_validity_risk": {"pass": bool, "reason": string} | null
+    "P_empirical_validity_risk": {"pass": bool, "reason": string} | null,
+    "Q_first_experiment_go_no_go": {"pass": bool, "reason": string} | null
   },
   "overall_verdict": "accept" | "reject" | "downgrade" | "retry",
   "field_boundary_alignment": object,  // 原样返回 gap.field_boundary_alignment，便于 pipeline 记录
@@ -136,7 +147,8 @@ P. empirical_validity_risk: 工程实验是否显式处理会让结果无效的�
     "J_ablations_present": {"pass": true, "reason": ""},
     "K_no_TBD": {"pass": true, "reason": ""},
     "N_compute_profile_present": {"pass": false, "reason": "缺算力资源画像，不影响质量判断"},
-    "P_empirical_validity_risk": {"pass": false, "reason": "未说明时序防泄漏及交易成本处理"}
+    "P_empirical_validity_risk": {"pass": false, "reason": "未说明时序防泄漏及交易成本处理"},
+    "Q_first_experiment_go_no_go": {"pass": false, "reason": "缺少最小实验的停止条件"}
   },
   "overall_verdict": "downgrade",
   "verdict_summary": "method 不够细，roadmap 不完整，降为理论型保留 hypothesis"

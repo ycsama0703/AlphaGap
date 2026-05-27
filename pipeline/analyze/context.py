@@ -18,6 +18,7 @@ from ..config import PROJECT_ROOT
 
 
 log = logging.getLogger(__name__)
+AI_INNOVATION_PLAYBOOK_PATH = PROJECT_ROOT / "knowledge" / "ai_innovation_playbook.md"
 
 
 def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
@@ -29,7 +30,7 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
     start = end_date - timedelta(days=window_days - 1)
     with db.connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT p.id, p.title, p.abstract, p.publication_date, p.affiliations, p.url,
                    p.arxiv_categories,
                    e.side, e.method_primary_json, e.domain_json, e.tags_json,
@@ -43,6 +44,7 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
               AND date(p.publication_date) <= ?
+              AND {db.TRIGGER_ELIGIBILITY_GUARD}
             ORDER BY s.priority_score DESC
             LIMIT ?
             """,
@@ -155,6 +157,39 @@ def load_fin_field_notes(fields_dir: Path | None = None) -> list[dict]:
         note["_path"] = str(path)
         notes.append(note)
     return notes
+
+
+def load_fin_transfer_cells(cells_path: Path | None = None) -> list[dict]:
+    """Read the human-maintained, experiment-anchored transfer taxonomy."""
+    cells_path = cells_path or (PROJECT_ROOT / "knowledge" / "fin_fields" / "transfer_cells.yaml")
+    if not cells_path.exists():
+        return []
+    import yaml
+
+    raw = yaml.safe_load(cells_path.read_text(encoding="utf-8")) or {}
+    return [
+        cell for cell in (raw.get("cells") or [])
+        if cell.get("status", "active") == "active"
+    ]
+
+
+def load_ai_innovation_playbook(playbook_path: Path | None = None) -> str:
+    """Read the compact runtime digest from the full calibration asset."""
+    path = playbook_path or AI_INNOVATION_PLAYBOOK_PATH
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    start = text.find("## Runtime Prompt Digest")
+    if start < 0:
+        return text
+    end = text.find("\n## ", start + len("## Runtime Prompt Digest"))
+    return text[start:] if end < 0 else text[start:end].strip()
+
+
+def select_fin_transfer_cells(cells: list[dict], field_notes: list[dict]) -> list[dict]:
+    """Keep cells belonging to the selected daily field boundary context."""
+    selected_fields = {note.get("id") for note in field_notes}
+    return [cell for cell in cells if cell.get("field_id") in selected_fields]
 
 
 def fin_field_for_prompt(meta: dict, body: str) -> dict:

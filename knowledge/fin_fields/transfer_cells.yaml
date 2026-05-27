@@ -1,0 +1,312 @@
+version: 1
+status: active
+last_reviewed: 2026-05-26
+policy:
+  authority: human_maintained
+  automatic_new_cells: false
+  evidence_rule: "AI evidence may support an active cell only when it supplies a testable intervention and experiment fit."
+cells:
+  - cell_id: factor.executable_repair
+    field_id: factor_investing
+    mechanism_family: Formulaic Alpha Search
+    bottleneck: Executable factor validity
+    ai_intervention_class: verifier-guided repair of executable factor expressions
+    experiment_anchor:
+      data_object: symbolic alpha expressions evaluated on point-in-time equity data
+      primary_metric: valid and investable expression rate after repair
+      baseline: unguided generation and rule-based syntax repair
+      failure_mode: generated formulas execute but violate data timing, cost, or semantic constraints
+  - cell_id: factor.diverse_search
+    field_id: factor_investing
+    mechanism_family: Diversity-Preserving Factor Discovery
+    bottleneck: Redundancy control
+    ai_intervention_class: diversity-aware search for low-correlation factor candidates
+    experiment_anchor:
+      data_object: candidate factor library and out-of-sample returns
+      primary_metric: incremental net Sharpe at controlled factor correlation
+      baseline: score-only factor search with equal evaluation budget
+      failure_mode: apparently new factors reproduce known exposures or each other
+  - cell_id: factor.budgeted_search
+    field_id: factor_investing
+    mechanism_family: Formulaic Alpha Search
+    bottleneck: Search budget efficiency
+    ai_intervention_class: adaptive compute allocation for factor hypothesis search
+    experiment_anchor:
+      data_object: factor search trajectories under a fixed backtest and API budget
+      primary_metric: valid nonredundant candidates discovered per unit cost
+      baseline: fixed compute allocation per candidate
+      failure_mode: budget is spent repeatedly evaluating low-value or invalid candidates
+  - cell_id: factor.causal_screen
+    field_id: factor_investing
+    mechanism_family: Economic Theory And Causal Support
+    bottleneck: Theory and causal support
+    ai_intervention_class: causal or invariant screening of candidate factor hypotheses
+    experiment_anchor:
+      data_object: factor candidates across regimes and markets
+      primary_metric: stability of signed IC and exposure interpretation out of sample
+      baseline: historical-IC-only screening
+      failure_mode: factor performance is driven by transient correlations without defensible mechanism
+  - cell_id: factor.point_in_time_audit
+    field_id: factor_investing
+    mechanism_family: Point-In-Time Robust Validation
+    bottleneck: Point-in-time discipline
+    ai_intervention_class: automated temporal leakage and information-set auditing
+    experiment_anchor:
+      data_object: dated features, filings, universe membership, and backtest traces
+      primary_metric: detection rate for injected point-in-time violations
+      baseline: static date-lag rules
+      failure_mode: backtest consumes revised, future, or survivorship-contaminated information
+  - cell_id: factor.cost_aware_construction
+    field_id: factor_investing
+    mechanism_family: Implementation-Aware Factor Portfolio Construction
+    bottleneck: Implementation costs
+    ai_intervention_class: cost-aware optimization of factor positions and turnover
+    experiment_anchor:
+      data_object: factor signals, liquidity, transaction costs, and portfolio holdings
+      primary_metric: net out-of-sample Sharpe after cost and capacity controls
+      baseline: gross-return factor weighting
+      failure_mode: predictive factor becomes uninvestable after turnover and market impact
+
+  - cell_id: pricing.sdf_structured_representation
+    field_id: asset_pricing_ml
+    mechanism_family: SDF-Constrained Representation Learning
+    bottleneck: Economic interpretation of latent states
+    ai_intervention_class: economically constrained representation learning for pricing kernels
+    experiment_anchor:
+      data_object: asset returns and point-in-time characteristics
+      primary_metric: pricing error with interpretable latent exposure stability
+      baseline: unconstrained nonlinear return predictor
+      failure_mode: latent representation predicts returns without describing priced risk
+  - cell_id: pricing.cross_asset_relations
+    field_id: asset_pricing_ml
+    mechanism_family: Cross-Asset Information Sharing
+    bottleneck: Cross-asset attention validity
+    ai_intervention_class: relation-aware cross-asset information aggregation with attribution audit
+    experiment_anchor:
+      data_object: asset panel with economic relations and returns
+      primary_metric: out-of-market pricing performance with relation attribution fidelity
+      baseline: independent-asset model and unrestricted attention model
+      failure_mode: learned relations encode sector or market shortcuts rather than pricing structure
+  - cell_id: pricing.risk_premia_disentangle
+    field_id: asset_pricing_ml
+    mechanism_family: Conditional Risk Premia Decomposition
+    bottleneck: Risk-premia versus mispricing separation
+    ai_intervention_class: disentangled latent decomposition of risk compensation and mispricing
+    experiment_anchor:
+      data_object: conditional returns, characteristics, and macro states
+      primary_metric: identified component stability under regime and portfolio tests
+      baseline: single-head expected return prediction
+      failure_mode: model blends risk and mispricing into an uninterpretable alpha score
+  - cell_id: pricing.uncertainty_calibration
+    field_id: asset_pricing_ml
+    mechanism_family: Uncertainty-Aware Expected Returns
+    bottleneck: Uncertainty calibration
+    ai_intervention_class: calibrated uncertainty or abstention for expected-return forecasts
+    experiment_anchor:
+      data_object: rolling expected-return forecasts and realized returns
+      primary_metric: calibration coverage and utility after uncertainty-aware selection
+      baseline: point forecasts ranked without uncertainty
+      failure_mode: noisy forecasts are treated as equally reliable trading inputs
+  - cell_id: pricing.pre_outcome_consistency_audit
+    field_id: asset_pricing_ml
+    mechanism_family: Uncertainty-Aware Expected Returns
+    bottleneck: Uncertainty calibration
+    ai_intervention_class: arbitrage- or logic-consistency audit of probabilistic forecasts before outcomes realize
+    experiment_anchor:
+      data_object: related probabilistic return or risk forecasts whose logical constraints are testable immediately
+      primary_metric: pre-outcome inconsistency detection and relation to subsequent forecast error
+      baseline: calibration assessed only after realized outcomes
+      failure_mode: mutually inconsistent forecasts are deployed before delayed ground truth exposes the error
+  - cell_id: pricing.shortcut_audit
+    field_id: asset_pricing_ml
+    mechanism_family: Complexity Shortcut Audit
+    bottleneck: Complexity shortcut detection
+    ai_intervention_class: mechanistic or counterfactual audit of complex pricing predictors
+    experiment_anchor:
+      data_object: trained nonlinear pricing model and counterfactual feature panels
+      primary_metric: shortcut detection accuracy and performance after removing shortcuts
+      baseline: feature importance correlation only
+      failure_mode: complex model secretly implements trivial momentum or volatility timing
+
+  - cell_id: agent.tool_routing
+    field_id: financial_llm_agents
+    mechanism_family: Finance-Semantic Tool Routing
+    bottleneck: Financial tool ambiguity
+    ai_intervention_class: intent- and schema-aware routing with executable argument verification
+    experiment_anchor:
+      data_object: financial API/tool catalog and professional queries
+      primary_metric: correct executable tool-call rate under near-duplicate tools
+      baseline: retrieval-only tool selection
+      failure_mode: agent selects lexically similar but economically wrong data operation
+  - cell_id: agent.tool_feedback_refinement
+    field_id: financial_llm_agents
+    mechanism_family: Finance-Semantic Tool Routing
+    bottleneck: Financial tool ambiguity
+    ai_intervention_class: execution-feedback refinement of financial tool descriptions and routing memory
+    experiment_anchor:
+      data_object: repeated financial tool-call tasks with ambiguous APIs and recorded execution errors
+      primary_metric: reduction in repeated wrong-tool or invalid-argument failures
+      baseline: static tool documentation and retrieval-only routing
+      failure_mode: an agent repeats tool-selection errors because its tool description never absorbs execution feedback
+  - cell_id: agent.evidence_stopping
+    field_id: financial_llm_agents
+    mechanism_family: Evidence-Sufficient Agentic Retrieval
+    bottleneck: Evidence sufficiency
+    ai_intervention_class: evidence-aware retrieval stopping, expansion, and refusal
+    experiment_anchor:
+      data_object: financial questions with filings, tables, and claim-level evidence
+      primary_metric: supported-answer rate at matched retrieval/tool budget
+      baseline: fixed-k retrieval agent
+      failure_mode: agent answers before evidence supports the precise claim
+  - cell_id: agent.adaptive_retrieval_budget
+    field_id: financial_llm_agents
+    mechanism_family: Evidence-Sufficient Agentic Retrieval
+    bottleneck: Evidence sufficiency
+    ai_intervention_class: difficulty-conditioned test-time compute allocation for retrieval and grounded generation
+    experiment_anchor:
+      data_object: financial evidence questions with variable retrieval depth and reasoning difficulty
+      primary_metric: supported-answer rate at fixed aggregate retrieval and generation cost
+      baseline: fixed retrieval depth and generation budget per question
+      failure_mode: simple questions consume excess budget while complex claims are answered with insufficient evidence
+  - cell_id: agent.trace_audit
+    field_id: financial_llm_agents
+    mechanism_family: Auditable Execution Trace
+    bottleneck: Trace reliability
+    ai_intervention_class: process-level verification of tool and reasoning trajectories
+    experiment_anchor:
+      data_object: multi-step financial tool-use trajectories with injected faults
+      primary_metric: unsafe-trace detection and corrected final-answer rate
+      baseline: final-answer-only judge
+      failure_mode: correct-looking output follows invalid data access or calculation steps
+  - cell_id: agent.numerical_verification
+    field_id: financial_llm_agents
+    mechanism_family: Numerical And Accounting Verification
+    bottleneck: Numerical and accounting brittleness
+    ai_intervention_class: program-aided verification of financial calculations and definitions
+    experiment_anchor:
+      data_object: financial tables, metric requests, and calculation traces
+      primary_metric: calculation accuracy with unit and period correctness
+      baseline: chain-of-thought answer without executable verification
+      failure_mode: answer uses wrong units, denominator, period, or restated value
+  - cell_id: agent.temporal_validity
+    field_id: financial_llm_agents
+    mechanism_family: Temporal Validity Control
+    bottleneck: Temporal leakage
+    ai_intervention_class: point-in-time retrieval and temporal provenance enforcement
+    experiment_anchor:
+      data_object: historical research tasks with versioned documents and market data
+      primary_metric: temporal-valid answer rate under leakage traps
+      baseline: unrestricted retrieval agent
+      failure_mode: historical recommendation cites evidence unavailable at the decision date
+  - cell_id: agent.provenance_memory
+    field_id: financial_llm_agents
+    mechanism_family: Stateful Financial Memory
+    bottleneck: Trace reliability
+    ai_intervention_class: versioned provenance-aware memory for repeated financial research
+    experiment_anchor:
+      data_object: longitudinal analyst tasks with changing evidence
+      primary_metric: correct reuse and invalidation of stored claims
+      baseline: stateless agent and unversioned memory
+      failure_mode: agent reuses stale or unsupported memory across reports
+
+  - cell_id: nlp.schema_extraction
+    field_id: financial_nlp
+    mechanism_family: Schema-Aware Financial Information Extraction
+    bottleneck: Schema alignment
+    ai_intervention_class: constrained extraction over accounting schemas and contexts
+    experiment_anchor:
+      data_object: filings with XBRL tags, units, periods, and textual disclosures
+      primary_metric: concept-period-unit exact match
+      baseline: free-form information extraction
+      failure_mode: extraction confuses related financial concepts or contexts
+  - cell_id: nlp.evidence_retrieval
+    field_id: financial_nlp
+    mechanism_family: Evidence-Grounded Financial Retrieval
+    bottleneck: Realistic query retrieval
+    ai_intervention_class: query-aware retrieval with subclaim evidence sufficiency checks
+    experiment_anchor:
+      data_object: professional questions and report evidence spans
+      primary_metric: evidence recall and subclaim support rate
+      baseline: dense retrieval without sufficiency gate
+      failure_mode: retriever returns topical but non-supporting passages
+  - cell_id: nlp.table_reasoning
+    field_id: financial_nlp
+    mechanism_family: Financial Numerical Reasoning Over Text And Tables
+    bottleneck: Table-text grounding
+    ai_intervention_class: executable numerical reasoning grounded across tables and narrative
+    experiment_anchor:
+      data_object: filings with tables, footnotes, and numerical questions
+      primary_metric: exact answer and execution-trace validity
+      baseline: text-only or non-executable reasoning model
+      failure_mode: answer misses table-text links or applies invalid formulas
+  - cell_id: nlp.long_document_memory
+    field_id: financial_nlp
+    mechanism_family: Long-Document Financial Understanding
+    bottleneck: Long-document salience
+    ai_intervention_class: structured long-document memory preserving economically salient changes
+    experiment_anchor:
+      data_object: longitudinal filings and earnings transcripts
+      primary_metric: material-change retrieval precision and supported summary accuracy
+      baseline: chunk-and-summarize long-context pipeline
+      failure_mode: boilerplate displaces financially material updates
+  - cell_id: nlp.factuality_recency
+    field_id: financial_nlp
+    mechanism_family: Factuality, Recency, And Consistency Evaluation
+    bottleneck: Factuality and recency
+    ai_intervention_class: external-source citation, timestamp, and contradiction verification for financial text outputs
+    experiment_anchor:
+      data_object: generated answers with dated sources and injected contradictions
+      primary_metric: unsupported or stale claim detection rate
+      baseline: answer-level factuality judge without temporal evidence
+      failure_mode: fluent output cites stale or contradictory financial facts
+
+  - cell_id: portfolio.constraint_projection
+    field_id: portfolio_optimization
+    mechanism_family: Constraint-Aware Weight Construction
+    bottleneck: Constraint realism
+    ai_intervention_class: solver- or projection-guided enforcement of portfolio constraints
+    experiment_anchor:
+      data_object: expected returns, covariance, mandates, and generated weights
+      primary_metric: feasible portfolio rate and utility among feasible solutions
+      baseline: penalty-only or unconstrained generated allocation
+      failure_mode: proposed weights violate leverage, concentration, liquidity, or mandate limits
+  - cell_id: portfolio.robust_allocation
+    field_id: portfolio_optimization
+    mechanism_family: Distributionally Robust Allocation
+    bottleneck: Estimation error
+    ai_intervention_class: uncertainty-set or calibration-aware robust allocation
+    experiment_anchor:
+      data_object: rolling estimates and realized portfolio returns
+      primary_metric: downside utility and turnover-adjusted performance under shifts
+      baseline: plug-in mean-variance optimizer
+      failure_mode: optimization magnifies noisy estimates into unstable weights
+  - cell_id: portfolio.cost_rebalancing
+    field_id: portfolio_optimization
+    mechanism_family: Cost-Aware Multi-Period Rebalancing
+    bottleneck: Transaction cost and turnover
+    ai_intervention_class: constrained multi-period decision policy with explicit transaction costs
+    experiment_anchor:
+      data_object: dynamic holdings, signals, costs, and liquidity
+      primary_metric: net objective under turnover and path-feasibility controls
+      baseline: myopic one-period rebalancing
+      failure_mode: dynamic policy overtrades away gross improvement
+  - cell_id: portfolio.regime_abstention
+    field_id: portfolio_optimization
+    mechanism_family: Regime-Aware Allocation
+    bottleneck: Regime validation
+    ai_intervention_class: regime-conditioned allocation with uncertainty-aware abstention
+    experiment_anchor:
+      data_object: market states, allocation actions, and realized outcomes
+      primary_metric: conditional utility with regime confidence calibration
+      baseline: always-act regime classifier allocation
+      failure_mode: uncertain regime labels cause costly allocation switches
+  - cell_id: portfolio.scenario_stress
+    field_id: portfolio_optimization
+    mechanism_family: Scenario And Stress-Test Generation
+    bottleneck: Ambiguity-set design
+    ai_intervention_class: validated scenario generation for stress-aware allocation
+    experiment_anchor:
+      data_object: historical stress regimes, generated scenarios, and portfolio exposures
+      primary_metric: stress coverage and robust portfolio utility
+      baseline: historical resampling scenarios
+      failure_mode: synthetic scenarios are plausible-looking but omit relevant tail risks

@@ -40,6 +40,8 @@ def audit_candidates(candidates: list[dict], context: dict,
         fin_recent_papers_json=json.dumps(context.get("fin_recent_papers", []), ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context.get("existing_mappings", []), ensure_ascii=False, indent=2),
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
+        fin_transfer_cells_json=json.dumps(context.get("fin_transfer_cells", []), ensure_ascii=False, indent=2),
+        ai_innovation_playbook=context.get("ai_innovation_playbook", ""),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     try:

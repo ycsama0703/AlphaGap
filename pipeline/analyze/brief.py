@@ -50,13 +50,14 @@ def find_neighbor_papers(gap: dict, side: str, top_k: int = 5) -> list[dict]:
 
     with db.connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT p.id, p.title, p.url, p.affiliations, p.publication_date,
                    e.method_primary_json, e.domain_json, e.tags_json, e.side
             FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
             WHERE e.extraction_status IN ('l1_done', 'l2_done')
               AND (e.side = ? OR e.side = 'both')
+              AND {db.TRIGGER_ELIGIBILITY_GUARD}
             ORDER BY p.publication_date DESC
             LIMIT 500
             """,
@@ -142,7 +143,7 @@ def generate_brief(gap_item: dict, ai_trends: dict, fin_trends: dict,
         system=system,
         user=user,
         temperature=0.3,
-        reasoning=True,
+        brief=True,
         max_tokens=DEEP_BRIEF_MAX_TOKENS,
     )
 

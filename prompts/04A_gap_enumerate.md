@@ -1,8 +1,8 @@
 # Prompt 04A: Gap Enumeration（cheap, candidate pool 生成）
 
-**用途**：在用 Prompt 04 / 05 做精雕之前，先让 LLM**大批量列出候选**——10-15 个 "AI 技术 × Fin 应用" 的迁移点，每个 1 句话。然后下一步从中挑 top 5-8 精雕成完整 gap。
+**用途**：在用 Prompt 04 / 05 做实验化之前，先让 LLM 列出 6-8 个 "AI 技术 × Fin 应用" 的迁移点，每个 1 句话。下一步只精雕少量能尽快进入实验的候选。
 
-**为什么**：直接让 LLM 一次性产 5 个完整 gap，质量受限于"第一个想到的 5 个"。先 enumerate 再 refine 能强行扩大搜索空间，多样性 + 质量同步提升。
+**为什么**：保留少量探索空间，但不能让候选池本身成为工作重心；最终目标是选出可运行实验。
 
 **模型建议**：DeepSeek-V3.5  
 **温度**：0.8（鼓励多样性发散）  
@@ -13,14 +13,14 @@
 ## System Prompt
 
 ```
-你是一个 AI×Fin 跨学科研究 brainstorm 专家。任务：**大批量、多样性优先**地列出 10-15 个 "AI 技术 X → Fin 应用 Y" 的迁移机会候选。
+你是一个 AI×Fin 跨学科研究 brainstorm 专家。任务：列出 6-8 个 "AI 技术 X → Fin 应用 Y" 的迁移机会候选，并优先选择可以很快落到实验上的方向。
 
 输出原则：
 1. 严格 JSON，无前后缀
 2. 每个候选 1 句话即可（≤ 60 字），不需要展开
-3. 多样性硬约束：
-   - 必须覆盖至少 4 个不同的 AI 大类（agent / RL / interpretability / time-series / multimodal / mech-interp / 其他）
-   - 必须覆盖至少 3 个不同的 Fin 子领域（factor / portfolio / forecasting / regime / microstructure / 其他）
+3. 多样性约束：
+   - 尽量覆盖至少 3 个不同的 AI 大类（agent / RL / interpretability / time-series / multimodal / mech-interp / 其他）
+   - 尽量覆盖至少 2 个不同的 Fin 子领域（factor / portfolio / forecasting / regime / microstructure / 其他）
    - 同一 AI 概念 × 不同 Fin 应用算不同候选
    - 同一 Fin 应用 × 不同 AI 技术也算不同候选
 4. 每个候选必须 ground 在【输入 ai_recent_papers / fin_recent_papers / trends 中】实际存在的技术或场景
@@ -43,6 +43,15 @@
    - mechanism_family 必须来自该 field 的 mechanism_families[*].name
    - open_bottleneck 尽量来自该 field 的 open_bottlenecks[*].name
    - 候选阶段不要输出 good_transfer_target / bad_target_avoided / why_aligned；这些留给 Prompt 04/05 精雕，避免 JSON 过长被截断
+12. 利用 `ai_innovation_playbook` 做机制外推，不做品牌嫁接：
+   - 先识别 AI 论文属于哪种 innovation pattern：它打破的旧假设、暴露的失败、引入的新控制点
+   - 再检查 Fin field 中是否存在操作上同构的失败，而不是只匹配 topic 名称
+   - 每条 candidate 必须简短填写 `innovation_translation`，供后续精雕使用
+13. 候选分为两种 `opportunity_mode`：
+   - `grounded_transfer`：已有 active `transfer_cell_id` 可以承载实验；必须选择该 cell，并围绕其 experiment anchor 提出
+   - `frontier_extension`：AI 新控制点指向所选 Fin field 中具体但尚未被 active cells 覆盖的 failure mode；允许 `transfer_cell_id` 为空，但必须填写 `proposed_cell`
+   - `frontier_extension` 只有在能写清新 failure mode、AI intervention class、最小实验锚点以及旧 cells 不足之处时才可提出；不能因为论文看似新颖就发明方向
+14. 这是 experiment-first 流程：优先产出 `grounded_transfer`；`frontier_extension` 最多提出 1 条，只作为人工讨论备选，不挤占可直接实验的候选。
 
 风格示例（好）：
 - "用独立验证器反馈循环降低因子搜索的 OOS 过拟合"
@@ -59,7 +68,7 @@
 ## User Prompt Template
 
 ```
-基于以下数据产出 10-15 个 AI→Fin 迁移机会候选（短列表）。
+基于以下数据产出 6-8 个 AI→Fin 迁移机会候选（短列表，以可运行实验为目标）。
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
@@ -71,6 +80,9 @@
 【Fin 侧趋势】 {fin_trends_json}
 【现有 mappings】 {existing_mappings_json}
 【Fin 领域边界 notes（机制层级，不是论文列表）】 {fin_field_boundaries_json}
+【AI innovation playbook（用于从 AI 新控制点外推 Fin failure，不是候选目录）】
+{ai_innovation_playbook}
+【Active Fin transfer cells（grounded_transfer 的正式实验锚点；frontier_extension 可提出缺失的新 cell）】 {fin_transfer_cells_json}
 【Fin 侧关键词命中次数 (fin_uptake)】 {fin_uptake_json}
 
 输出严格 JSON：
@@ -83,17 +95,53 @@
       "fin_category": "factor",
       "ai_anchor_paper_id": "2605.xxxxx",
       "fin_uptake_status": "open_gap",
+      "opportunity_mode": "grounded_transfer",
+      "innovation_translation": {
+        "pattern": "process verification",
+        "broken_assumption": "只看最终回测即可筛除无效公式",
+        "new_control_point": "对公式生成和执行步骤做验证反馈",
+        "finance_homologous_failure": "错误公式可偶然获得看似良好的回测结果"
+      },
       "field_boundary_alignment": {
         "field_id": "factor_investing",
+        "transfer_cell_id": "factor.executable_repair",
         "mechanism_family": "Factor Decay And Crowding Diagnosis",
         "open_bottleneck": "Factor decay diagnosis"
+      },
+      "proposed_cell": {}
+    },
+    {
+      "idx": 2,
+      "one_liner": "用动态监控识别金融研究 agent 的隐式指标投机",
+      "ai_category": "agent_monitoring",
+      "fin_category": "financial_agent",
+      "ai_anchor_paper_id": "2605.yyyyy",
+      "fin_uptake_status": "open_gap",
+      "opportunity_mode": "frontier_extension",
+      "innovation_translation": {
+        "pattern": "strategic monitoring",
+        "broken_assumption": "静态审计器足以发现所有违规轨迹",
+        "new_control_point": "对抗性监控与隐式捷径检测",
+        "finance_homologous_failure": "研究 agent 可能通过审计盲区获得合格结论"
+      },
+      "field_boundary_alignment": {
+        "field_id": "financial_llm_agents",
+        "transfer_cell_id": "",
+        "mechanism_family": "Auditable Execution Trace",
+        "open_bottleneck": "Strategic audit failure"
+      },
+      "proposed_cell": {
+        "new_failure_mode": "agent obtains acceptable result through hidden evaluation loophole",
+        "ai_intervention_class": "adversarial monitor with shortcut-detection signal",
+        "experiment_anchor_sketch": "timestamped tool traces; hidden-violation recall; static audit baseline",
+        "why_existing_cells_insufficient": "current trace audit checks execution errors, not strategic evasion of the audit rule"
       }
     },
     ...
   ]
 }
 
-数量：10-15 个。多样性 > 质量（这一步是候选池）。
+数量：6-8 个。可实验性优先；允许最多 1 个高质量 frontier 讨论项。
 ```
 
 ## Output Schema 示例
@@ -120,13 +168,13 @@
 
 1. 调用 Prompt 04A → 得到 candidates list
 2. Pipeline 按 fin_uptake_status 排序：open_gap 优先 > partial > explored
-3. 取 top 8（保证多样性 ai_category + field_id）→ 喂给 Prompt 04 / 05 做精雕
-4. Prompt 04 / 05 现在只精雕这 8 个，而不是从 0 想
+3. 优先选择 grounded_transfer，最多保留 1 个 frontier_extension；取 top 4 → 喂给 Prompt 04 / 05
+4. Prompt 04 / 05 只精雕这 4 个，而不是持续扩大方向池
 
 ## 失败模式 & 对策
 
 | 失败 | 对策 |
 |---|---|
-| 候选数 < 10 | LLM 温度提高后重试 1 次 |
+| 候选数 < 4 | LLM 温度提高后重试 1 次 |
 | ai_anchor_paper_id 编造 | pipeline 校验，编造的 drop |
 | 多样性差（90% RL）| pipeline 后置按 ai_category 分桶取，每桶 ≤ 2 |

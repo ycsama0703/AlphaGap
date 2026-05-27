@@ -1,6 +1,7 @@
 from pipeline.analyze.gaps import (
     _only_reviewed_theoretical_gaps,
     _only_upgraded_engineering_gaps,
+    select_email_experiments,
     suppress_theoretical_email_duplicates,
 )
 from pipeline.analyze import gaps as gaps_mod
@@ -71,6 +72,15 @@ def test_same_field_but_different_mechanism_family_is_kept():
 
     assert kept == [engineering, theoretical]
     assert suppressed == []
+
+
+def test_daily_email_includes_only_runnable_engineering_experiments():
+    theory = _item("TH-1", "theoretical", "novel discussion")
+    engineering = _item("ENG-1", "engineering", "runnable experiment")
+    low_score = _item("ENG-2", "engineering", "not ready")
+    low_score["score"]["passes_email_threshold"] = False
+
+    assert select_email_experiments([theory, low_score, engineering]) == [engineering]
 
 
 def test_adversarial_mode_drops_theory_without_reviewed_candidate_source():

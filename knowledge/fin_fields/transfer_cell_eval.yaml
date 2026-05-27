@@ -1,0 +1,280 @@
+version: 1
+status: initial_curated_requires_owner_signoff
+created_at: 2026-05-26
+purpose: >-
+  Acceptance set for the Fin-first AI evidence auditor. Cases are selected
+  from the local AI evidence corpus to cover direct transfer, adjacent
+  interventions that require taxonomy review, and attractive but invalid
+  analogies. Running this asset must not write evidence links.
+label_policy:
+  support: >-
+    The paper contributes the same intervention operation as an active
+    transfer cell and can be evaluated through that cell's experiment anchor.
+  candidate_extension: >-
+    The intervention is technically concrete and plausibly useful to a
+    maintained finance field, but is not the same operation as an active cell.
+  reject: >-
+    The paper is a benchmark only, a domain-specific method without a usable
+    finance intervention, or an analogy that should not enter gap generation.
+cases:
+  - paper_id: openreview:4FWAwZtd2n
+    title: Scaling LLM Test-Time Compute Optimally Can be More Effective than Scaling Parameters for Reasoning
+    expected_verdict: support
+    expected_cell_id: factor.budgeted_search
+    difficulty: clear_support
+    rationale: Adaptive test-time allocation is a direct compute-budget policy for fixed-budget hypothesis search.
+  - paper_id: openreview:FSjIrOm1vz
+    title: Inference Scaling for Long-Context Retrieval Augmented Generation
+    expected_verdict: support
+    expected_cell_id: agent.adaptive_retrieval_budget
+    difficulty: clear_support
+    rationale: It allocates retrieval and generation depth under budget for evidence questions.
+  - paper_id: openreview:r5IXBlTCGc
+    title: Consistency Checks for Language Model Forecasters
+    expected_verdict: support
+    expected_cell_id: pricing.pre_outcome_consistency_audit
+    difficulty: clear_support
+    rationale: Logical or arbitrage consistency is an immediate audit of probabilistic forecasts before outcomes.
+  - paper_id: openreview:QKBu1BOAwd
+    title: From Exploration to Mastery - Enabling LLMs to Master Tools via Self-Driven Interactions
+    expected_verdict: support
+    expected_cell_id: agent.tool_feedback_refinement
+    difficulty: clear_support
+    rationale: Execution feedback revises tool documentation, matching recovery from tool routing failures.
+  - paper_id: openreview:EJ680UQeZG
+    title: Pinet - Optimizing hard-constrained neural networks with orthogonal projection layers
+    expected_verdict: support
+    expected_cell_id: portfolio.constraint_projection
+    difficulty: clear_support
+    rationale: Differentiable projection directly guarantees hard feasibility of generated portfolio weights.
+  - paper_id: openreview:yVQcr4qjD6
+    title: Robust Function-Calling for On-Device Language Model via Function Masking
+    expected_verdict: candidate_extension
+    difficulty: near_boundary_candidate
+    rationale: Function masking improves tool-selection robustness, but is a distinct training operation from active routing and verification cells.
+  - paper_id: openreview:MS9nWFY7LG
+    title: Q-RAG - Long Context Multi-Step Retrieval via Value-Based Embedder Training
+    expected_verdict: candidate_extension
+    difficulty: near_boundary_candidate
+    rationale: Value-guided retrieval path learning is concrete, but differs from the current sufficiency-check retrieval cell.
+  - paper_id: openreview:k5nIOvYGCL
+    title: MemAgent - Reshaping Long-Context LLM with Multi-Conv RL-based Memory Agent
+    expected_verdict: candidate_extension
+    difficulty: near_boundary_candidate
+    rationale: Segment-wise RL memory is concrete but does not yet express preservation of economically salient changes.
+  - paper_id: openreview:ztzZDzgfrh
+    title: ReDeEP - Detecting Hallucination in Retrieval-Augmented Generation via Mechanistic Interpretability
+    expected_verdict: candidate_extension
+    difficulty: near_boundary_candidate
+    rationale: Internal-activation hallucination detection is concrete, but differs from the external-source verification active cell.
+  - paper_id: openreview:Iyrtb9EJBp
+    title: Measuring and Enhancing Trustworthiness of LLMs in RAG through Grounded Attributions and Learning to Refuse
+    expected_verdict: support
+    expected_cell_id: agent.evidence_stopping
+    difficulty: near_boundary_support
+    rationale: Grounded attribution and refusal are direct evidence-sufficiency actions before answering.
+
+  - paper_id: openreview:z5uVAKwmjf
+    title: AFlow - Automating Agentic Workflow Generation
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Workflow search is implementable for finance agents, but active cells cover tools and evidence rather than workflow topology.
+  - paper_id: openreview:ZgCCDwcGwn
+    title: AgentGym-RL - An Open-Source Framework to Train LLM Agents for Long-Horizon Decision Making via Multi-Turn RL
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Stable long-horizon training is concrete and testable for financial agents, but not represented by active deployment-time cells.
+  - paper_id: openreview:xBW2FIfswU
+    title: CauKer - Classification Time Series Foundation Models Can Be Pretrained on Synthetic Data
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Causally structured synthetic time-series pretraining is distinct from causal factor screening.
+  - paper_id: openreview:cv2iMNWCsh
+    title: Credal Wrapper of Model Averaging for Uncertainty Estimation in Classification
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Credal uncertainty sets could matter for return forecasts, but they are not yet a calibrated return-selection cell.
+  - paper_id: openreview:Acvo2RGSCy
+    title: DeLLMa - Decision Making Under Uncertainty with Large Language Models
+    expected_verdict: reject
+    difficulty: adjacent_intervention
+    rationale: Generic decision-theoretic reasoning supplies no specific finance-operational intervention or missing cell.
+  - paper_id: openreview:Mf5AleTUVK
+    title: In-the-Flow Agentic System Optimization for Effective Planning and Tool Use
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Trajectory-level optimization is broader than execution feedback for tool schemas.
+  - paper_id: openreview:JEGDp1E4OH
+    title: MC-Search - Evaluating and Enhancing Multimodal Agentic Search with Structured Long Reasoning Chains
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Process-supervised search is concrete but its multimodal planning operation is not an existing financial evidence cell.
+  - paper_id: openreview:NdHka08uWn
+    title: RAG-SR - Retrieval-Augmented Generation for Neural Symbolic Regression
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Symbolic expression generation is relevant to factors but is neither verifier repair nor diversity or budget control.
+  - paper_id: openreview:WV7xIboTDK
+    title: Reliable Weak-to-Strong Monitoring of LLM Agents
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Oversight of stronger agents is useful but different from auditing a financial execution trace.
+  - paper_id: openreview:bt4Ahpemmi
+    title: Conformal Robustness Control - A New Strategy for Robust Decision
+    expected_verdict: support
+    expected_cell_id: portfolio.robust_allocation
+    difficulty: hard_boundary
+    rationale: Robust prediction-set decision control supplies the uncertainty-set operation used by robust allocation.
+  - paper_id: openreview:k38Th3x4d9
+    title: Root Cause Analysis of Anomalies in Multivariate Time Series through Granger Causal Discovery
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Regime anomaly root-cause diagnosis is plausible for finance but not the current causal hypothesis-screening operation.
+  - paper_id: openreview:P0GOk5wslg
+    title: Speculative Actions - A Lossless Framework for Faster AI Agents
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Speculative tool execution changes latency and commit safety, dimensions absent from current cells.
+  - paper_id: openreview:e1wDDFmlVu
+    title: Time-MoE - Billion-Scale Time Series Foundation Models with Mixture of Experts
+    expected_verdict: reject
+    difficulty: hard_boundary
+    rationale: A generic scalable forecasting architecture does not identify a finance failure mode or a new experiment cell.
+  - paper_id: openreview:1CLzLXSFNn
+    title: TimeMixer++ - A General Time Series Pattern Machine for Universal Predictive Analysis
+    expected_verdict: reject
+    difficulty: hard_boundary
+    rationale: Universal temporal representation is generic forecasting improvement rather than a finance intervention.
+  - paper_id: openreview:BmG88rONaU
+    title: Test-time Adaptation for Cross-modal Retrieval with Query Shift
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Query-shift adaptation suggests a retrieval robustness cell that is not currently defined.
+  - paper_id: openreview:TId1SHe8JG
+    title: Provable Uncertainty Decomposition via Higher-Order Calibration
+    expected_verdict: support
+    expected_cell_id: pricing.uncertainty_calibration
+    difficulty: hard_boundary
+    rationale: Higher-order calibration supplies calibrated uncertainty for uncertainty-aware forecast selection.
+  - paper_id: openreview:2efNHgYRvM
+    title: On the Identification of Temporal Causal Representation with Instantaneous Dependence
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Temporal causal representation is distinct from screening candidate factors for economic stability.
+  - paper_id: openreview:I4e82CIDxv
+    title: Sparse Feature Circuits - Discovering and Editing Interpretable Causal Graphs in Language Models
+    expected_verdict: support
+    expected_cell_id: pricing.shortcut_audit
+    difficulty: hard_boundary
+    rationale: Sparse causal circuits provide an actionable attribution and ablation audit for shortcut reliance in a trained pricing model.
+  - paper_id: openreview:HvSytvg3Jh
+    title: AlphaEdit - Null-Space Constrained Knowledge Editing for Language Models
+    expected_verdict: candidate_extension
+    difficulty: hard_boundary
+    rationale: Protected knowledge updating is a plausible memory-maintenance extension, not provenance memory as currently anchored.
+  - paper_id: openreview:zl0HLZOJC9
+    title: Probabilistic Learning to Defer - Handling Missing Expert Annotations and Controlling Workload Distribution
+    expected_verdict: candidate_extension
+    difficulty: adjacent_intervention
+    rationale: Human escalation under uncertainty could support finance review workflows, but no active defer-to-expert cell exists.
+
+  - paper_id: "2602.24012"
+    title: InfoNCE Induces Gaussian Distribution
+    expected_verdict: reject
+    difficulty: attractive_theory_negative
+    rationale: A representation theorem does not supply a finance experiment intervention.
+  - paper_id: openreview:2IftRjRB07
+    title: FlashWorld - High-quality 3D Scene Generation within Seconds
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Three-dimensional scene generation has no maintained financial object or intervention.
+  - paper_id: openreview:0ctvBgKFgc
+    title: ProtComposer - Compositional Protein Structure Generation with 3D Ellipsoids
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Protein structure generation is domain-specific and non-transferable to these cells.
+  - paper_id: openreview:j7cyANIAxV
+    title: Rethinking the generalization of drug target affinity prediction algorithms via similarity aware evaluation
+    expected_verdict: candidate_extension
+    difficulty: attractive_evaluation_negative
+    rationale: Similarity-aware splitting is a transferable validation operation, but no active finance cell expresses it.
+  - paper_id: openreview:rySLejeB1k
+    title: Emergent Orientation Maps - Mechanisms, Coding Efficiency and Robustness
+    expected_verdict: reject
+    difficulty: attractive_mechanism_negative
+    rationale: Neural simulation of visual cortex does not implement a finance bottleneck.
+  - paper_id: openreview:LMsdys7t1L
+    title: DCFold - Efficient Protein Structure Generation with Single Forward Pass
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Fast protein generation is not a reusable intervention for maintained finance fields.
+  - paper_id: openreview:M2SsqpxGtc
+    title: CubeDiff - Repurposing Diffusion-Based Image Models for Panorama Generation
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Panorama generation is outside every experimental anchor.
+  - paper_id: openreview:84pDoCD4lH
+    title: Do Vision-Language Models Represent Space and How - Evaluating Spatial Frame of Reference under Ambiguities
+    expected_verdict: reject
+    difficulty: benchmark_negative
+    rationale: A spatial ambiguity evaluation is neither a financial data object nor an intervention.
+  - paper_id: openreview:awvJBtB2op
+    title: Generating Freeform Endoskeletal Robots
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Morphological robot generation is not a financial mechanism transfer.
+  - paper_id: openreview:q3EbOXb4y1
+    title: Retri3D - 3D Neural Graphics Representation Retrieval
+    expected_verdict: reject
+    difficulty: keyword_trap
+    rationale: The retrieval keyword refers to neural graphics, not evidence retrieval in finance documents.
+  - paper_id: openreview:RInisw1yin
+    title: SRSA - Skill Retrieval and Adaptation for Robotic Assembly Tasks
+    expected_verdict: reject
+    difficulty: keyword_trap
+    rationale: Retrieval of robot assembly skills is domain locked and should not support tool routing.
+  - paper_id: openreview:2YvbLQEdYt
+    title: CyberGym - Evaluating AI Agents' Real-World Cybersecurity Capabilities at Scale
+    expected_verdict: reject
+    difficulty: agent_keyword_trap
+    rationale: A cybersecurity exploit benchmark is not an agent intervention for finance.
+  - paper_id: openreview:jHDZEUgS4r
+    title: MedAgentGym - A Scalable Agentic Training Environment for Code-Centric Reasoning in Biomedical Data Science
+    expected_verdict: candidate_extension
+    difficulty: agent_keyword_trap
+    rationale: A sandboxed training environment is plausibly useful for financial agents, but does not match any active execution or audit cell.
+  - paper_id: openreview:9YNyiCJE3k
+    title: OSDA Agent - Leveraging Large Language Models for De Novo Design of Organic Structure Directing Agents
+    expected_verdict: candidate_extension
+    difficulty: agent_keyword_trap
+    rationale: Generate-evaluate-reflect improvement is concrete and potentially useful, but has no active finance cell.
+  - paper_id: openreview:uvHmnahyp1
+    title: SynFlowNet - Design of Diverse and Novel Molecules with Synthesis Constraints
+    expected_verdict: candidate_extension
+    difficulty: keyword_trap
+    rationale: Feasible constrained generation is transferable in principle, but is not the current factor repair operation.
+  - paper_id: openreview:rFpZnn11gj
+    title: PathGen-1.6M - 1.6 Million Pathology Image-text Pairs Generation through Multi-agent Collaboration
+    expected_verdict: reject
+    difficulty: agent_keyword_trap
+    rationale: Multi-agent pathology caption generation has no financial intervention.
+  - paper_id: openreview:N8Oj1XhtYZ
+    title: SANA - Efficient High-Resolution Text-to-Image Synthesis with Linear Diffusion Transformer
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Image synthesis efficiency is outside the maintained fields.
+  - paper_id: openreview:TVQLu34bdw
+    title: Proteina - Scaling Flow-based Protein Structure Generative Models
+    expected_verdict: reject
+    difficulty: clear_negative
+    rationale: Protein generative scaling cannot enter financial gap generation.
+  - paper_id: openreview:HQcCd0laFq
+    title: Exchangeability of GNN Representations with Applications to Graph Retrieval
+    expected_verdict: reject
+    difficulty: attractive_theory_negative
+    rationale: A graph retrieval representation result is not cross-asset financial aggregation.
+  - paper_id: openreview:wmV4cIbgl6
+    title: CausalRivers - Scaling up benchmarking of causal discovery for real-world time-series
+    expected_verdict: reject
+    difficulty: benchmark_negative
+    rationale: A river causal-discovery benchmark provides no transferable intervention.

@@ -15,6 +15,9 @@
 3. novelty risk：existing_mappings 或 fin_uptake 是否显示该方向已经 mature / explored，候选却假装全新。
 4. falsifiability risk：如果该方向连可被证伪的机制预测都说不清，不能通过。
 5. research budget risk：若候选与另一个方向实质同义，只保留边界更清晰、机制更明确的一条。
+6. experiment-anchor risk：
+   - `grounded_transfer` 必须选择 active transfer_cell，且 AI 机制必须能够具体改变该 cell 的 data_object / primary_metric / baseline / failure_mode 中的实验检验。
+   - `frontier_extension` 允许不命中现有 cell，但必须依据 innovation pattern 指出新的 Fin failure mode、干预类、最小 experiment anchor，以及为什么现有 cell 不能表达它。缺一则 reject。
 
 判定：
 - pass：存在真实 open bottleneck，迁移前提至少初步可信，主要风险可在后续设计中检验。
@@ -24,6 +27,7 @@
 重要约束：
 - 只审查输入 candidate，不得创造新的独立候选。
 - 不因实验细节还未展开而拒绝；此阶段审的是研究方向的生存性。
+- 不得仅因 `frontier_extension` 不在旧 cell 清单中就拒绝；应审查它是否真正发现新的可检验控制点，还是对已有 cell 的改名或表面类比。
 - strongest_objection 必须具体说明“为什么可能不成立”，不能写空泛风险。
 - 一个候选可以同时命中多个失败类别，用 `failure_classes` 全部列出；仍用 strongest_objection 表示首要反对理由。
 - 对 revise，required_revision 必须能被 Prompt 04/05 落实。
@@ -51,6 +55,12 @@
 
 【Fin field boundaries】
 {fin_field_boundaries_json}
+
+【AI innovation playbook（用于审查 frontier_extension 是否遵循可复用创新机制）】
+{ai_innovation_playbook}
+
+【Active Fin transfer cells（grounded_transfer 的正式锚点；也是 extension 去重对照）】
+{fin_transfer_cells_json}
 
 【Fin uptake 测量】
 {fin_uptake_json}

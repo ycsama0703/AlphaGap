@@ -23,11 +23,15 @@ from . import uptake as uptake_mod
 log = logging.getLogger(__name__)
 
 EMAIL_DUPLICATE_SIMILARITY_THRESHOLD = 0.42
-CANDIDATE_ENUMERATION_MAX_TOKENS = 16384
-MAX_THEORETICAL_GAPS = 5
+CANDIDATE_ENUMERATION_MAX_TOKENS = 8192
+MAX_CANDIDATES_FOR_REFINEMENT = 4
+MAX_THEORETICAL_GAPS = 4
 THEORETICAL_EXPANSION_MAX_TOKENS = 16384
-MAX_ENGINEERING_GAPS = 3
+MAX_ENGINEERING_GAPS = 2
 ENGINEERING_EXPANSION_MAX_TOKENS = 32768
+MAX_FRONTIER_CANDIDATES_SELECTED = 1
+GROUNDED_TRANSFER = "grounded_transfer"
+FRONTIER_EXTENSION = "frontier_extension"
 
 
 def build_gap_context(end_date: date | None = None,
@@ -35,6 +39,7 @@ def build_gap_context(end_date: date | None = None,
                       window_days_ai: int | None = None,
                       window_days_fin: int | None = None,
                       window_days: int | None = None,   # legacy override
+                      include_trends: bool = False,
                       client: LLMClient | None = None) -> dict:
     """Gather all context needed for gap generation prompts.
 
@@ -54,9 +59,15 @@ def build_gap_context(end_date: date | None = None,
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     mappings = ctx_builder.load_existing_mappings()
     all_fin_field_boundaries = ctx_builder.load_fin_field_notes()
+    all_fin_transfer_cells = ctx_builder.load_fin_transfer_cells()
+    ai_innovation_playbook = ctx_builder.load_ai_innovation_playbook()
 
-    ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=wd_ai)
-    fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=wd_fin)
+    if include_trends:
+        ai_trends = trends_mod.summarize_trends("ai", end, client=client, window_days=wd_ai)
+        fin_trends = trends_mod.summarize_trends("fin", end, client=client, window_days=wd_fin)
+    else:
+        ai_trends = _empty_trends("disabled_in_daily_experiment_first_mode")
+        fin_trends = _empty_trends("disabled_in_daily_experiment_first_mode")
     fin_field_boundaries = ctx_builder.select_fin_field_notes(
         all_fin_field_boundaries,
         [ctx_builder.paper_for_prompt(p) for p in ai_papers],
@@ -64,6 +75,10 @@ def build_gap_context(end_date: date | None = None,
         _strip_meta(ai_trends),
         _strip_meta(fin_trends),
         max_fields=3,
+    )
+    fin_transfer_cells = ctx_builder.select_fin_transfer_cells(
+        all_fin_transfer_cells,
+        fin_field_boundaries,
     )
 
     # Tier 1.1: quantified Fin-side uptake for AI concepts (algorithmic, not LLM)
@@ -87,11 +102,16 @@ def build_gap_context(end_date: date | None = None,
         "existing_mappings": [ctx_builder.mapping_for_prompt(m) for m in mappings],
         "fin_field_boundaries": fin_field_boundaries,
         "fin_field_boundaries_all": all_fin_field_boundaries,
+        "fin_transfer_cells": fin_transfer_cells,
+        "fin_transfer_cells_all": all_fin_transfer_cells,
+        "ai_innovation_playbook": ai_innovation_playbook,
+        "trends_included": include_trends,
         "fin_uptake": fin_uptake,    # ← Tier 1.1: hard negative-evidence ground truth
         # raw refs for downstream validation
         "_valid_ai_ids": {p["id"] for p in ai_papers},
         "_valid_fin_ids": {p["id"] for p in fin_papers},
         "_mappings_brief": [ctx_builder.mapping_brief(m) for m in mappings],
+        "_valid_transfer_cell_ids": {cell["cell_id"] for cell in fin_transfer_cells},
     }
 
 
@@ -99,8 +119,18 @@ def _strip_meta(trends: dict) -> dict:
     return {k: v for k, v in trends.items() if k != "_meta"}
 
 
+def _empty_trends(reason: str) -> dict:
+    return {
+        "rising": [],
+        "falling": [],
+        "new_emergence": [],
+        "stable_hot": [],
+        "_meta": {"reason": reason},
+    }
+
+
 def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list[dict]:
-    """Prompt 04A → 10-15 one-liner candidates with diversity constraints."""
+    """Prompt 04A → a small candidate pool, biased toward runnable experiments."""
     client = client or LLMClient()
     system, user_template = parse_prompt("04A_gap_enumerate")
     user = render_template(
@@ -111,6 +141,8 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
+        fin_transfer_cells_json=json.dumps(context.get("fin_transfer_cells", []), ensure_ascii=False, indent=2),
+        ai_innovation_playbook=context.get("ai_innovation_playbook", ""),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     try:
@@ -129,6 +161,8 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
     # Validate anchor IDs are real
     valid_ai = context.get("_valid_ai_ids", set())
     candidates = [c for c in candidates if c.get("ai_anchor_paper_id") in valid_ai]
+    valid_cells = context.get("_valid_transfer_cell_ids", set())
+    candidates = [c for c in candidates if _candidate_has_valid_route(c, valid_cells)]
     log.info("Enumerate: %d valid candidates from Prompt 04A", len(candidates))
     return candidates
 
@@ -142,20 +176,28 @@ def select_top_candidates(candidates: list[dict], top_n: int = 8) -> list[dict]:
       3. ai_category diversity (≤ 2 per category)
     """
     status_order = {"open_gap": 0, "partial": 1, "explored": 2}
-    candidates.sort(key=lambda c: status_order.get(c.get("fin_uptake_status", "explored"), 3))
+    candidates.sort(key=lambda c: (
+        0 if _opportunity_mode(c) == GROUNDED_TRANSFER else 1,
+        status_order.get(c.get("fin_uptake_status", "explored"), 3),
+    ))
 
     per_cat: dict[str, int] = {}
     per_field: dict[str, int] = {}
+    frontier_selected = 0
     selected = []
     for c in candidates:
         cat = c.get("ai_category", "other")
         field_id = _candidate_field_id(c)
+        is_frontier = _opportunity_mode(c) == FRONTIER_EXTENSION
+        if is_frontier and frontier_selected >= MAX_FRONTIER_CANDIDATES_SELECTED:
+            continue
         if per_field.get(field_id, 0) >= 3:
             continue
         if per_cat.get(cat, 0) >= 2:
             continue
         per_field[field_id] = per_field.get(field_id, 0) + 1
         per_cat[cat] = per_cat.get(cat, 0) + 1
+        frontier_selected += 1 if is_frontier else 0
         selected.append(c)
         if len(selected) >= top_n:
             break
@@ -167,6 +209,30 @@ def _candidate_field_id(candidate: dict) -> str:
     if isinstance(alignment, dict):
         return alignment.get("field_id") or candidate.get("field_id") or "unknown"
     return candidate.get("field_id") or "unknown"
+
+
+def _opportunity_mode(item: dict) -> str:
+    mode = item.get("opportunity_mode")
+    if mode in (GROUNDED_TRANSFER, FRONTIER_EXTENSION):
+        return mode
+    alignment = item.get("field_boundary_alignment") or {}
+    return GROUNDED_TRANSFER if alignment.get("transfer_cell_id") else FRONTIER_EXTENSION
+
+
+def _candidate_has_valid_route(candidate: dict, valid_cells: set[str]) -> bool:
+    """Allow bounded frontier proposals while enforcing existing-cell routes."""
+    alignment = candidate.get("field_boundary_alignment") or {}
+    if _opportunity_mode(candidate) == GROUNDED_TRANSFER:
+        cell_id = alignment.get("transfer_cell_id")
+        return not valid_cells or cell_id in valid_cells
+    proposal = candidate.get("proposed_cell") or {}
+    return bool(
+        alignment.get("field_id")
+        and proposal.get("new_failure_mode")
+        and proposal.get("ai_intervention_class")
+        and proposal.get("experiment_anchor_sketch")
+        and proposal.get("why_existing_cells_insufficient")
+    )
 
 
 def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
@@ -185,6 +251,7 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
+        fin_transfer_cells_json=json.dumps(context.get("fin_transfer_cells", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     base_user = render_template(user_template, **user_kwargs)
@@ -197,12 +264,15 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
     candidate_alignments = _candidate_alignments(candidates or [])
     candidate_audits = _candidate_audits(candidates or [])
     candidate_origins = _candidate_origins(candidates or [])
+    candidate_routes = _candidate_routes(candidates or [])
     for i, g in enumerate(gaps, start=1):
         g["_id"] = f"TH-{i}"
         g["_type"] = "theoretical"
         _ensure_field_alignment(g, candidate_alignments)
         _ensure_risk_audit(g, candidate_audits)
         _ensure_origin(g, candidate_origins)
+        _ensure_opportunity_route(g, candidate_routes)
+    gaps = gaps[:MAX_THEORETICAL_GAPS]
     log.info("Generated %d theoretical gaps", len(gaps))
     return gaps
 
@@ -262,6 +332,17 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
                               *, adversarial_mode: bool = False) -> list[dict]:
     """Prompt 05 → 0-3 engineering gap candidates (with full experimental roadmap)."""
     client = client or LLMClient()
+    grounded_theoretical_gaps = [
+        gap for gap in theoretical_gaps
+        if _opportunity_mode(gap) == GROUNDED_TRANSFER
+    ]
+    if len(grounded_theoretical_gaps) != len(theoretical_gaps):
+        log.info(
+            "Keeping %d frontier extension theories out of engineering expansion pending review",
+            len(theoretical_gaps) - len(grounded_theoretical_gaps),
+        )
+    if theoretical_gaps and not grounded_theoretical_gaps:
+        return []
     system, user_template = parse_prompt("05_gap_engineering")
     user_kwargs = dict(
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
@@ -270,21 +351,24 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
         existing_mappings_json=json.dumps(context["existing_mappings"], ensure_ascii=False, indent=2),
         fin_field_boundaries_json=json.dumps(context.get("fin_field_boundaries", []), ensure_ascii=False, indent=2),
+        fin_transfer_cells_json=json.dumps(context.get("fin_transfer_cells", []), ensure_ascii=False, indent=2),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
     )
     gaps = _expand_engineering_gaps_with_recovery(
         system=system,
         user_template=user_template,
         user_kwargs=user_kwargs,
-        theoretical_gaps=theoretical_gaps,
+        theoretical_gaps=grounded_theoretical_gaps,
         client=client,
         adversarial_mode=adversarial_mode,
     )
+    gaps = gaps[:MAX_ENGINEERING_GAPS]
     for i, g in enumerate(gaps, start=1):
         g["_id"] = f"ENG-{i}"
         g["_type"] = "engineering"
+        g.setdefault("opportunity_mode", GROUNDED_TRANSFER)
         _ensure_field_alignment(g, {})
-    _inherit_theoretical_origin(gaps, theoretical_gaps)
+    _inherit_theoretical_origin(gaps, grounded_theoretical_gaps)
     log.info("Generated %d engineering gaps", len(gaps))
     return gaps
 
@@ -377,6 +461,7 @@ def _candidate_alignments(candidates: list[dict]) -> dict[str, dict]:
                 "good_transfer_target": c.get("good_transfer_target", ""),
                 "bad_target_avoided": c.get("bad_target_avoided", ""),
                 "why_aligned": c.get("why_aligned", ""),
+                "transfer_cell_id": c.get("transfer_cell_id", ""),
             }
         out[str(idx)] = {k: v for k, v in alignment.items() if v}
     return out
@@ -407,6 +492,19 @@ def _candidate_origins(candidates: list[dict]) -> dict[str, dict]:
     return origins
 
 
+def _candidate_routes(candidates: list[dict]) -> dict[str, dict]:
+    routes: dict[str, dict] = {}
+    for candidate in candidates:
+        idx = candidate.get("idx")
+        if idx is None:
+            continue
+        routes[str(idx)] = {
+            "opportunity_mode": _opportunity_mode(candidate),
+            "proposed_cell": candidate.get("proposed_cell") or {},
+        }
+    return routes
+
+
 def _ensure_field_alignment(gap: dict, candidate_alignments: dict[str, dict]) -> None:
     alignment = gap.get("field_boundary_alignment")
     if isinstance(alignment, dict) and alignment.get("field_id"):
@@ -428,6 +526,17 @@ def _ensure_origin(gap: dict, candidate_origins: dict[str, dict]) -> None:
     source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
     if source_idx is not None and str(source_idx) in candidate_origins:
         gap["_origin"] = candidate_origins[str(source_idx)]
+
+
+def _ensure_opportunity_route(gap: dict, candidate_routes: dict[str, dict]) -> None:
+    source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
+    route = candidate_routes.get(str(source_idx)) if source_idx is not None else None
+    if route:
+        gap.setdefault("opportunity_mode", route["opportunity_mode"])
+        if route["proposed_cell"]:
+            gap.setdefault("proposed_cell", route["proposed_cell"])
+    else:
+        gap.setdefault("opportunity_mode", _opportunity_mode(gap))
 
 
 def _inherit_theoretical_origin(engineering_gaps: list[dict],
@@ -564,6 +673,7 @@ def run_gap_pipeline(end_date: date | None = None,
                      window_days_ai: int | None = None,
                      window_days_fin: int | None = None,
                      window_days: int | None = None,
+                     include_trends: bool = False,
                      adversarial_review: bool | None = None,
                      client: LLMClient | None = None) -> dict:
     """Full daily gap pipeline (asymmetric windows by default).
@@ -579,11 +689,11 @@ def run_gap_pipeline(end_date: date | None = None,
     ctx = build_gap_context(
         end_date, ai_top=ai_top, fin_top=fin_top,
         window_days_ai=window_days_ai, window_days_fin=window_days_fin,
-        window_days=window_days, client=client,
+        window_days=window_days, include_trends=include_trends, client=client,
     )
 
-    # Tier 1.3: Two-stage generation
-    # Stage A: enumerate 10-15 one-liner candidates (cheap, diverse)
+    # Two-stage generation: keep exploration bounded so the daily budget goes to experiments.
+    # Stage A: enumerate a short one-liner candidate pool.
     raw_candidates = enumerate_candidates(ctx, client=client)
     if adversarial_review:
         reviewed_candidates, risk_audit = risk_audit_mod.audit_candidates(
@@ -600,7 +710,9 @@ def run_gap_pipeline(end_date: date | None = None,
         }
     gate_enforced = adversarial_review and not risk_audit.get("fallback", False)
     risk_audit["gate_enforced"] = gate_enforced
-    top_candidates = select_top_candidates(reviewed_candidates, top_n=8)
+    top_candidates = select_top_candidates(
+        reviewed_candidates, top_n=MAX_CANDIDATES_FOR_REFINEMENT,
+    )
     log.info(
         "Two-stage%s: %d raw → %d post-audit → %d selected candidates for refinement",
         " + adversarial audit" if adversarial_review else "",
@@ -640,6 +752,7 @@ def run_gap_pipeline(end_date: date | None = None,
                 valid_fin,
                 mappings_brief,
                 fin_field_boundaries=ctx.get("fin_field_boundaries", []),
+                fin_transfer_cells=ctx.get("fin_transfer_cells", []),
                 ai_method_names=ai_method_names,
                 client=client,
             )
@@ -667,6 +780,7 @@ def run_gap_pipeline(end_date: date | None = None,
                 re_check = sc_mod.check_gap(tg, "theoretical", valid_ai, valid_fin,
                                              mappings_brief,
                                              fin_field_boundaries=ctx.get("fin_field_boundaries", []),
+                                             fin_transfer_cells=ctx.get("fin_transfer_cells", []),
                                              ai_method_names=ai_method_names,
                                              client=client)
             except Exception as e:
@@ -688,8 +802,8 @@ def run_gap_pipeline(end_date: date | None = None,
         else:
             rejected.append({"gap": gap, "type": gtype, "check": check})
 
-    email_ready_raw = [a for a in accepted if a["score"]["passes_email_threshold"]]
-    email_ready, duplicates_suppressed = suppress_theoretical_email_duplicates(email_ready_raw)
+    email_ready = select_email_experiments(accepted)
+    duplicates_suppressed: list[dict] = []
     log.info(
         "Gap pipeline: %d generated → %d accepted → %d email-ready "
         "(%d theoretical duplicates suppressed) ($%.4f)",
@@ -708,6 +822,16 @@ def run_gap_pipeline(end_date: date | None = None,
         "email_ready": email_ready,
         "duplicates_suppressed": duplicates_suppressed,
     }
+
+
+def select_email_experiments(accepted: list[dict],
+                             limit: int = MAX_ENGINEERING_GAPS) -> list[dict]:
+    """Keep the daily email about immediately runnable, reviewed experiments."""
+    return [
+        item for item in accepted
+        if item.get("type") == "engineering"
+        and item.get("score", {}).get("passes_email_threshold")
+    ][:limit]
 
 
 def _ai_method_names(ai_recent_papers: list[dict]) -> list[str]:
@@ -741,6 +865,8 @@ if __name__ == "__main__":
     parser.add_argument("--fin-top", type=int, default=10)
     parser.add_argument("--full", action="store_true",
                         help="Run full pipeline (gen → self-check → score)")
+    parser.add_argument("--with-trends", action="store_true",
+                        help="Include expensive Prompt 03 trend clustering (maintenance/debug only)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -757,7 +883,7 @@ if __name__ == "__main__":
 
     if args.full:
         result = run_gap_pipeline(end, ai_top=args.ai_top, fin_top=args.fin_top,
-                                  client=client, **window_kwargs)
+                                  include_trends=args.with_trends, client=client, **window_kwargs)
         print(f"\n=== Pipeline summary ===")
         print(f"Generated: {len(result['theoretical'])} theoretical + {len(result['engineering'])} engineering")
         print(f"Accepted:  {len(result['accepted'])}")
@@ -778,7 +904,7 @@ if __name__ == "__main__":
             print(f"  [{g['_id']}] {item['type']} t={item['score']['total']} | {g.get('hypothesis', '?')[:80]}")
     else:
         ctx = build_gap_context(end, ai_top=args.ai_top, fin_top=args.fin_top,
-                                client=client, **window_kwargs)
+                                include_trends=args.with_trends, client=client, **window_kwargs)
         print(f"AI papers: {len(ctx['ai_recent_papers'])} | Fin: {len(ctx['fin_recent_papers'])}")
 
         th_gaps = generate_theoretical_gaps(ctx, client=client)

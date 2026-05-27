@@ -129,7 +129,7 @@ a per-token advantage signal, enabling dense credit assignment in long-horizon R
 
 ```python
 result = deepseek.chat(
-    model="deepseek-chat",
+    model="deepseek-v4-flash",
     messages=[
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": USER_TEMPLATE.format(**paper)}

@@ -106,7 +106,7 @@ def test_engineering_email_gate_uses_total_threshold():
     assert result["gate"] == "engineering_total"
 
 
-def test_theoretical_email_gate_allows_high_novelty_conceptual_gap():
+def test_theoretical_gap_stays_in_inbox_even_when_high_novelty():
     result = email_gate_result(
         "theoretical",
         novelty=9,
@@ -115,8 +115,8 @@ def test_theoretical_email_gate_allows_high_novelty_conceptual_gap():
         total=6.5,
     )
 
-    assert result["passes"] is True
-    assert result["gate"] == "theoretical_high_novelty"
+    assert result["passes"] is False
+    assert result["gate"] == "theoretical_discussion_only"
 
 
 def test_theoretical_email_gate_rejects_low_support():

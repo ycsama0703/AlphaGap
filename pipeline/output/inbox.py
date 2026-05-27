@@ -33,7 +33,7 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         "",
         _section_stats(payload),
         _section_risk_audit(payload),
-        _section_gaps_email(payload),       # ⭐ moved to top
+        _section_gaps_email(payload),
         _section_suppressed_duplicates(payload),
         _section_gaps_all(payload),
         _section_trends(payload),
@@ -66,14 +66,18 @@ def _section_stats(p: dict) -> str:
             f"\n- Fin field boundaries selected: **{', '.join(selected)}**"
             f" ({len(selected)}/{len(available) or len(selected)})"
         )
+    suppressed_line = (
+        f"- Theoretical email duplicates suppressed: {len(suppressed)}\n"
+        if suppressed else ""
+    )
     return (
         f"## Pipeline\n\n"
         f"- Papers fetched: **{s.get('fetched', '?')}** | candidates: **{s.get('candidates', '?')}**\n"
         f"- L1 extracted: {s.get('l1_done', '?')} | L2 extracted: {s.get('l2_done', '?')}\n"
-        f"- Gaps generated: {len(p.get('theoretical', []))} theoretical + {len(p.get('engineering', []))} engineering\n"
-        f"- Accepted: {len(p.get('accepted', []))} | Email-ready: {len(p.get('email_ready', []))}\n"
-        f"- Theoretical email duplicates suppressed: {len(suppressed)}\n"
-        f"- Mapping actions proposed: {len(p.get('mapping_actions', []))}\n"
+        f"- Hypotheses screened: {len(p.get('theoretical', []))} | Experiments designed: {len(p.get('engineering', []))}\n"
+        f"- Accepted for record: {len(p.get('accepted', []))} | Runnable experiments emailed: {len(p.get('email_ready', []))}\n"
+        f"{suppressed_line}"
+        f"- Daily mode: experiment-first; citation/trend/mapping maintenance off critical path\n"
         f"{field_line}\n"
         f"{audit_line}\n"
         f"- LLM cost: ${s.get('cost_usd', 0):.4f}"
@@ -160,7 +164,13 @@ def _section_top_papers(p: dict) -> str:
 def _section_trends(p: dict) -> str:
     wa = p.get("stats", {}).get("window_ai", 90)
     wf = p.get("stats", {}).get("window_fin", 180)
-    out = [f"## Mechanism Trends (AI {wa}d · Fin {wf}d rolling)"]
+    if not any(
+        (p.get(f"{side}_trends", {}) or {}).get(bucket)
+        for side in ("ai", "fin")
+        for bucket in ("rising", "new_emergence", "stable_hot", "falling")
+    ):
+        return ""
+    out = [f"## Optional Mechanism Trends (AI {wa}d · Fin {wf}d rolling)"]
     for side, label in [("ai", "AI"), ("fin", "Fin")]:
         trends = p.get(f"{side}_trends", {})
         out.append(f"\n### {label}")
@@ -204,8 +214,8 @@ def _section_trends(p: dict) -> str:
 def _section_gaps_email(p: dict) -> str:
     eg = p.get("email_ready", [])
     if not eg:
-        return "## Gaps (email-ready)\n\n_None today._"
-    out = ["## Gaps (email-ready)"]
+        return "## Runnable Experiments (emailed)\n\n_None cleared the go/no-go gate today._"
+    out = ["## Runnable Experiments (emailed)"]
     for item in eg:
         out.append(_render_gap_detail(item, full=True))
     return "\n".join(out)
@@ -230,7 +240,7 @@ def _section_gaps_all(p: dict) -> str:
     below = [a for a in accepted if not a["score"]["passes_email_threshold"]]
     if not below:
         return ""
-    out = ["## Other Accepted Gaps (below email threshold but worth keeping)"]
+    out = ["## Discussion Queue (not emailed)"]
     for item in below:
         out.append(_render_gap_detail(item, full=False))
     return "\n".join(out)
@@ -249,6 +259,11 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
         f"theory={s.get('theoretical_support', '?')}\n\n"
         f"**假设**: {hypothesis}\n"
     )
+    mode = g.get("opportunity_mode")
+    if mode == "frontier_extension":
+        head += "- opportunity_mode: `frontier_extension` — proposed new cell; human review required\n"
+    elif mode == "grounded_transfer":
+        head += "- opportunity_mode: `grounded_transfer` — anchored to an active cell\n"
     head += f"- novelty: {s.get('novelty_reason', '')}\n"
     head += f"- actionability: {s.get('actionability_reason', '')}\n"
     head += f"- theoretical_support: {s.get('theoretical_support_reason', '')}\n"
@@ -283,6 +298,17 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
             head += f"- Bad target avoided: {field['bad_target_avoided']}\n"
         if field.get("why_aligned"):
             head += f"- Why aligned: {field['why_aligned']}\n"
+    proposed = g.get("proposed_cell") or {}
+    if g.get("opportunity_mode") == "frontier_extension" and proposed:
+        head += "\n**Proposed new transfer cell (not active)**:\n"
+        if proposed.get("new_failure_mode"):
+            head += f"- New failure mode: {proposed['new_failure_mode']}\n"
+        if proposed.get("ai_intervention_class"):
+            head += f"- Intervention: {proposed['ai_intervention_class']}\n"
+        if proposed.get("experiment_anchor_sketch"):
+            head += f"- Experiment anchor sketch: {proposed['experiment_anchor_sketch']}\n"
+        if proposed.get("why_existing_cells_insufficient"):
+            head += f"- Why existing cells are insufficient: {proposed['why_existing_cells_insufficient']}\n"
 
     sm = g.get("structural_mapping") or {}
     if sm:
@@ -377,8 +403,18 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
 
 
 def _roadmap_tables_markdown(roadmap: dict) -> str:
+    first = roadmap.get("first_experiment") or {}
+    out = "\n**First Experiment (go/no-go)**:\n\n| Item | Design |\n|---|---|\n"
+    for label, value in [
+        ("Question", first.get("question") or "?"),
+        ("Minimal setup", first.get("minimal_setup") or "?"),
+        ("Go", first.get("go_criterion") or "?"),
+        ("Stop / pivot", first.get("stop_criterion") or "?"),
+        ("Runtime", first.get("estimated_runtime") or "?"),
+    ]:
+        out += f"| {label} | {value} |\n"
     data = roadmap.get("data", "?")
-    out = "\n**Dataset**:\n\n| Item | Design |\n|---|---|\n"
+    out += "\n**Dataset**:\n\n| Item | Design |\n|---|---|\n"
     if isinstance(data, dict):
         sources = data.get("sources") or data.get("datasets") or "?"
         if isinstance(sources, list):
@@ -457,7 +493,7 @@ def _markdown_inline_items(items: object) -> str:
 def _section_mapping_actions(p: dict) -> str:
     actions = p.get("mapping_actions", [])
     if not actions:
-        return "## Mapping Updates\n\n_No proposed actions today._"
+        return ""
     out = ["## Mapping Updates (require approval)\n"]
     for i, a in enumerate(actions, 1):
         out.append(f"\n### Action {i}: {a.get('type')}")
@@ -472,7 +508,7 @@ def _section_mapping_actions(p: dict) -> str:
 def _section_mapping_drafts(p: dict) -> str:
     drafts = p.get("mapping_drafts", [])
     if not drafts:
-        return "## Mapping Drafts\n\n_No mapping drafts today._"
+        return ""
     out = ["## Mapping Drafts (review before promotion)\n"]
     for draft in drafts:
         path = draft.get("_path", "")
@@ -493,10 +529,8 @@ def _section_review_instructions() -> str:
     return (
         "---\n\n"
         "## How to review\n\n"
-        "1. For each gap, mapping draft, and mapping action, fill in `[x]` on the chosen decision\n"
-        "2. For approved drafts, review `mappings/drafts/*.md`, edit frontmatter if needed, "
-        "then promote by moving the file to `mappings/` and assigning a stable `id: Mxxxx`\n"
-        "3. For approved `status_change` / `add_evidence`, edit the relevant `mappings/*.md`\n"
+        "1. Review runnable experiments first; approve one only when its first go/no-go test is worth running.\n"
+        "2. Review discussion items only when they expose a plausible new control point; they do not alter mappings automatically.\n"
+        "3. After an experiment is selected or validated, update the official mapping manually in a separate review step.\n"
         "4. `git add . && git commit -m \"review YYYY-MM-DD\" && git push`\n"
-        "5. Server will use updated official mappings as context for tomorrow's run; drafts are ignored until promoted\n"
     )

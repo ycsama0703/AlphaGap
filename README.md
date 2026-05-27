@@ -6,7 +6,7 @@
 
 ## What this is
 
-AlphaGap 每天扫 AI 和金融两个领域的最新论文，自动发现"AI 已经做到了 X，金融领域还没用上 X"的研究 gap，通过邮件推送高分候选（含完整实验路线），并维护一份持续生长的 AI×Fin 知识映射库。
+AlphaGap 每天读取新的高相关论文，把新的 AI 机制翻译为金融中可验证的失败模式，并通过邮件推送最多两个可立即开展的实验方案。理论型跨界想法留在 inbox 人工讨论，不让知识维护工作挤占实验推进。
 
 **项目本质不是论文管理工具，而是研究判断沉淀系统**——核心资产是 `mappings/` + `briefs/` 两份持续生长的 markdown 知识库，DB 和论文都是可再生的派生数据。
 
@@ -114,15 +114,12 @@ print('cleared')
 ```
 Step 1   Ingest                  fetchers/* → filter → SQLite
             ↓                    (今日 HF Daily 新论文 + L1 extract)
-Step 1.5 Citation snapshot       S2 batch API → citation_snapshots 表
-            ↓                    (所有 DB 论文当日 citation 数)
 Step 2   Gap pipeline            analyze/gaps.py:run_gap_pipeline
             ↓
-         ├─ Trends               Prompt 03 × 2 (AI 90d / Fin 180d)
-         ├─ Candidate pool       Prompt 04A
+         ├─ Candidate pool       Prompt 04A (6-8 → refine top 4)
          ├─ Risk audit (可选)    Prompt 04B (ADVERSARIAL_GAP_REVIEW=true)
-         ├─ Theoretical gaps     Prompt 04
-         ├─ Engineering gaps     Prompt 05 (可升级理论型)
+         ├─ Theoretical gaps     Prompt 04 (screening/discussion only)
+         ├─ Engineering gaps     Prompt 05 (最多 2 个 go/no-go 实验)
          ├─ Self-check           Prompt 06 (结构 + 实证风险 checklist)
          └─ Scoring              Prompt 07 (novelty + actionability)
             ↓
@@ -130,17 +127,26 @@ Step 2.5 Enrich gaps             从 DB 查 anchor papers 完整信息
             ↓
 Step 3   Deep briefs             Prompt 09 (仅对 email-ready engineering gap)
             ↓                    → briefs/YYYY-MM-DD-GAPID.md
-Step 4   Mapping update          Prompt 08 → 状态变更 / 新建提议
+Step 4   Inbox markdown          inbox/YYYY-MM-DD.md (讨论/审计用)
             ↓
-Step 5   Inbox markdown          inbox/YYYY-MM-DD.md (审批用)
-            ↓
-Step 6   Email                   Resend HTML digest → yuncongliu0703@gmail.com
+Step 5   Email                   Resend HTML → runnable experiments only
 ```
 
-模型路由：论文 L1/L2 批量抽取和 mapping update 使用 `DEEPSEEK_MODEL_DEFAULT`；
-Trends、Candidate pool、Risk audit、Theoretical/Engineering gaps、Self-check、
-Scoring 与 Deep briefs 使用 `DEEPSEEK_MODEL_REASONING`。默认 DeepSeek 配置下，
-前者为 `deepseek-chat`，研究判断链路为 `deepseek-reasoner`。
+模型路由：论文 L1/L2 批量抽取以及独立运行的 mapping maintenance 使用
+`DEEPSEEK_MODEL_DEFAULT`；Candidate pool、Risk audit、Theoretical/Engineering
+gaps、Self-check 与 Scoring 使用 `DEEPSEEK_MODEL_REASONING`；只有筛选通过的
+工程实验在生成 Deep brief 时使用 `DEEPSEEK_MODEL_BRIEF`。默认 DeepSeek 配置
+下，daily 主链均为 `deepseek-v4-flash`，`deepseek-v4-pro` 仅承担少量 deep
+brief 深写任务。
+
+Daily 主流程不再执行 Semantic Scholar 全库 citation snapshot、Prompt 03
+趋势聚类或 mapping 更新建议。这些均不是产出实验的前置条件；需要维护时可
+单独运行相应命令。
+
+Gap generation 有两个研究通道：`grounded_transfer` 使用人工维护的 active
+transfer cell，可升级为工程实验与 deep brief；`frontier_extension` 使用
+`knowledge/ai_innovation_playbook.md` 识别现有 taxonomy 未覆盖的新金融
+control point，仅作为理论型人工讨论项展示，批准为新 cell 前不会自动工程化。
 
 ### 文件树（重要的）
 
@@ -177,7 +183,7 @@ alphagap/
 │   │   └── concepts.py            Prompt 01/02 + prompt md 解析器 + render_template
 │   │
 │   ├── analyze/
-│   │   ├── citations.py           S2 daily snapshot + concept-level velocity 聚合
+│   │   ├── citations.py           可选 S2 snapshot + concept-level velocity 维护
 │   │   ├── context.py             从 DB 取 top papers / mappings 给 prompts
 │   │   ├── trends.py              Prompt 03 + 概念频率聚合（AI 90d / Fin 180d）
 │   │   ├── gaps.py                Prompt 04/05 + orchestrator (run_gap_pipeline)
@@ -207,13 +213,13 @@ alphagap/
 ## Design decisions（为什么这么设计）
 
 ### 1. 两类 gap 严格区分
-- **理论型 (theoretical)**: 偏 conceptual hypothesis，启发研究方向。LLM 可以飞，自检宽松。
-- **工程型 (engineering)**: 必须自带完整实验路线（data + method + metrics + baselines + ablations）。LLM 想不清楚就降级为理论型，不允许"漂亮但飘"。
+- **理论型 (theoretical)**: 偏 conceptual hypothesis，用于人工讨论或升级筛选，不进入每日邮件。
+- **工程型 (engineering)**: 必须自带完整实验路线（first experiment + data + metrics + baselines + ablations）。LLM 想不清楚就降级为理论型。
 
 理由：纯理论 gap 每天能生成无限条没有用，工程型才是真正交给人/AI 执行的研究 task spec。
 
 ### 2. 邮件不是 digest，是分流入口
-- 邮件只放 score ≥ 8 的"email-ready" gap（精读层）
+- 邮件只放 score ≥ 8 的工程型 go/no-go 实验，最多两个
 - inbox.md 全量 audit（审批层）
 - briefs/*.md 每个高分 gap 独立深度文档（onboarding 层）
 
@@ -225,12 +231,10 @@ alphagap/
 
 理由：14 天对 AI 都嫌窄，对 Fin 是噪声。两侧 publication cadence 本质不同，必须不对称。
 
-### 4. Citation velocity 作为补强信号
-- 单纯 paper count 增长 = "更多人在写"（可能是 hype）
-- citation_velocity_30d 高 = "工作真在被引用"（已被认真使用）
-- 两者都高 = 真热点
-
-S2 daily snapshot 提供这个信号（free tier 够用）。
+### 4. 边界维护不阻塞实验
+- citation snapshot、趋势聚类和 mapping 扩展不是 daily 邮件前置步骤
+- 需要复盘领域边界时再独立运行维护任务
+- daily 预算优先给新机制翻译、实验设计和 go/no-go 判断
 
 ### 5. Mappings 表必须人审
 - LLM 提议永远进 `inbox/` 等审批
@@ -291,14 +295,18 @@ cd ~/workspace/projects/alphagap
 ```
 LLM_PROVIDER=deepseek                         # deepseek | mimo | openrouter | custom
 DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_MODEL_DEFAULT=deepseek-chat       # 批量抽取与机械更新步骤
-DEEPSEEK_MODEL_REASONING=deepseek-reasoner # gap detection 判断链路与 deep brief
+DEEPSEEK_MODEL_DEFAULT=deepseek-v4-flash  # 批量抽取与机械更新步骤
+DEEPSEEK_MODEL_REASONING=deepseek-v4-flash # daily gap 判断链路
+DEEPSEEK_MODEL_BRIEF=deepseek-v4-pro       # 仅筛选通过后的 deep brief
 OPENROUTER_API_KEY=                         # 仅 LLM_PROVIDER=openrouter 时读取
 OPENROUTER_MODEL_DEFAULT=                   # 例如供应商给出的 model slug
 OPENROUTER_MODEL_REASONING=
+OPENROUTER_MODEL_BRIEF=
 MIMO_API_KEY=                               # 仅 LLM_PROVIDER=mimo 时读取
 MIMO_BASE_URL=                              # MiMo dedicated base URL
 MIMO_MODEL_DEFAULT=mimo-v2.5-pro
+MIMO_MODEL_REASONING=mimo-v2.5-pro
+MIMO_MODEL_BRIEF=mimo-v2.5-pro
 RESEND_API_KEY=re_...
 EMAIL_FROM=onboarding@resend.dev           # Resend 测试地址（不需要域名验证）
 EMAIL_TO=yuncongliu0703@gmail.com          # 必须是 Resend 注册账号邮箱
@@ -318,6 +326,7 @@ ADVERSARIAL_GAP_REVIEW=false                # true = 开启候选级对抗审计
 ```bash
 LLM_PROVIDER=openrouter LLM_MODEL_DEFAULT='<provider/model-slug>' \
   LLM_MODEL_REASONING='<provider/model-slug>' \
+  LLM_MODEL_BRIEF='<provider/model-slug>' \
   .venv/bin/python -m pipeline.main daily --no-commit
 ```
 
@@ -427,13 +436,13 @@ cp .env.example .env
 # 测一篇论文的 L1/L2
 .venv/bin/python -m pipeline.extract.concepts cs.LG q-fin.PM
 
-# 测 trends
+# 可选维护：测 trends（不在 daily critical path）
 .venv/bin/python -m pipeline.analyze.trends ai --window 90 --end-date 2026-05-20
 
 # 测完整 gap pipeline
 .venv/bin/python -m pipeline.analyze.gaps --full --end-date 2026-05-20
 
-# Citation snapshot (S2)
+# 可选维护：Citation snapshot (S2，不在 daily critical path)
 .venv/bin/python -m pipeline.analyze.citations snapshot
 
 # 看 DB 当前状态

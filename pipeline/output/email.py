@@ -1,10 +1,9 @@
 """Send daily email via Resend.
 
 Email contains:
-  1. 今日重点论文 top 5-10（高价值作者/机构）
-  2. AI 方向 trends（14 天滚动）
-  3. Fin 方向 trends
-  4. Email-ready gaps — engineering uses total gate; theoretical uses high-novelty gate
+  1. Email-ready runnable experiments with structured experimental setup
+  2. Today's anchor papers
+  3. Optional trend maintenance output, only when explicitly generated
 
 NOT a paper digest — full audit lives in inbox/YYYY-MM-DD.md.
 """
@@ -28,8 +27,7 @@ def send_daily_email(d: date, payload: dict) -> None:
 
     subject = (
         f"[AlphaGap] {d.isoformat()} · "
-        f"{len(payload.get('email_ready', []))} gaps · "
-        f"{len(payload.get('mapping_actions', []))} mapping actions"
+        f"{len(payload.get('email_ready', []))} runnable experiments"
     )
     attachments = _brief_attachments(payload)
     html = _render_html(d, payload)
@@ -100,8 +98,8 @@ def _render_html(d: date, p: dict) -> str:
         "<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;'>",
         f"<h1 style='margin-bottom:4px;'>AlphaGap — {d.isoformat()}</h1>",
         _stats_compact_html(p),
-        _gaps_html(p),                # ⭐ moved to top
-        _trends_html(p),
+        _gaps_html(p),
+        _trends_html(p) if _has_trend_content(p) else "",
         _papers_html(p),
         _mapping_actions_html(p),
         f"<p style='color:#888;font-size:12px;margin-top:24px;'>"
@@ -127,8 +125,8 @@ def _stats_compact_html(p: dict) -> str:
     return (
         f"<p style='color:#888;font-size:13px;margin-top:0;'>"
         f"{s.get('fetched','?')} papers · {s.get('l1_done','?')} extracted · "
-        f"{len(p.get('theoretical',[]))} theoretical + {len(p.get('engineering',[]))} engineering gaps · "
-        f"<b style='color:#000;'>{len(p.get('email_ready',[]))} email-ready</b> · "
+        f"{len(p.get('theoretical',[]))} hypotheses screened · {len(p.get('engineering',[]))} experiments designed · "
+        f"<b style='color:#000;'>{len(p.get('email_ready',[]))} runnable experiments</b> · "
         f"${s.get('cost_usd', 0):.4f}{duplicate_text}{audit_text}</p>"
     )
 
@@ -211,12 +209,25 @@ def _trends_html(p: dict) -> str:
     return "\n".join(out)
 
 
+def _has_trend_content(p: dict) -> bool:
+    return any(
+        (p.get(f"{side}_trends", {}) or {}).get(bucket)
+        for side in ("ai", "fin")
+        for bucket in ("rising", "new_emergence", "stable_hot", "falling")
+    )
+
+
 def _gaps_html(p: dict) -> str:
     eg = p.get("email_ready", [])
     if not eg:
-        return "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>Gaps</h2><p><em>No email-ready gaps today.</em></p>"
+        return (
+            "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
+            "Runnable Experiments</h2>"
+            "<p><em>No engineering experiment cleared the go/no-go gate today. "
+            "Discussion ideas remain in the inbox audit.</em></p>"
+        )
     out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
-           f"⭐ Gaps ({len(eg)} email-ready)</h2>"]
+           f"Runnable Experiments ({len(eg)})</h2>"]
     for item in eg:
         out.append(_gap_card_html(item))
     return "\n".join(out)
@@ -230,6 +241,18 @@ def _gap_card_html(item: dict) -> str:
     hyp = _e(g.get("hypothesis", "?"))
     type_color = "#0a6e3d" if gtype == "engineering" else "#5a3b8c"
     type_bg = "#e6f4ea" if gtype == "engineering" else "#ede7f6"
+    mode = g.get("opportunity_mode")
+    if mode == "frontier_extension":
+        mode_label, mode_color, mode_bg = "FRONTIER EXTENSION", "#9a6700", "#fff8c5"
+    elif mode == "grounded_transfer":
+        mode_label, mode_color, mode_bg = "GROUNDED", "#57606a", "#f0f2f4"
+    else:
+        mode_label = mode_color = mode_bg = ""
+    mode_badge = (
+        f" <span style='color:{mode_color};background:{mode_bg};padding:2px 8px;"
+        f"border-radius:3px;font-size:11px;'>{_e(mode_label)}</span>"
+        if mode_label else ""
+    )
 
     out = [
         f"<div style='border:1px solid #ddd;border-radius:8px;padding:14px 18px;"
@@ -238,7 +261,8 @@ def _gap_card_html(item: dict) -> str:
         f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>",
         f"<span style='font-size:13px;color:#888;'>[{gid}] "
         f"<span style='color:{type_color};background:{type_bg};padding:2px 8px;"
-        f"border-radius:3px;font-size:11px;'>{_e(gtype.upper())}</span></span>",
+        f"border-radius:3px;font-size:11px;'>{_e(gtype.upper())}</span>"
+        f"{mode_badge}</span>",
         f"<span style='font-size:13px;color:#444;'>"
         f"<b>{_e(s['total'])}</b> "
         f"<span style='color:#888;'>(nov {_e(s['novelty'])} · act {_e(s['actionability'])} · "
@@ -272,6 +296,19 @@ def _gap_card_html(item: dict) -> str:
                 f"<p style='margin:4px 0 8px 0;font-size:12px;color:#777;'>"
                 f"{_e(field['why_aligned'])}</p>"
             )
+    proposed = g.get("proposed_cell") or {}
+    if mode == "frontier_extension" and proposed:
+        out.append(
+            "<div style='background:#fff8c5;border-left:3px solid #bf8700;"
+            "padding:10px 14px;border-radius:4px;margin:10px 0;font-size:13px;'>"
+            "<p style='margin:3px 0;'><b>Proposed new transfer cell</b> "
+            "(human review required; not active)</p>"
+            f"<p style='margin:3px 0;'><b>Failure mode</b>: {_e(proposed.get('new_failure_mode', '?'))}</p>"
+            f"<p style='margin:3px 0;'><b>Intervention</b>: {_e(proposed.get('ai_intervention_class', '?'))}</p>"
+            f"<p style='margin:3px 0;'><b>Experiment anchor</b>: {_e(proposed.get('experiment_anchor_sketch', '?'))}</p>"
+            f"<p style='margin:3px 0;'><b>Why not existing cells</b>: {_e(proposed.get('why_existing_cells_insufficient', '?'))}</p>"
+            "</div>"
+        )
 
     # Structural mapping (Tier 1.2)
     sm = g.get("structural_mapping") or {}
@@ -347,6 +384,7 @@ def _gap_card_html(item: dict) -> str:
 
 
 def _engineering_roadmap_html(roadmap: dict) -> str:
+    first = roadmap.get("first_experiment") or {}
     data = roadmap.get("data", "?")
     metrics = roadmap.get("metrics") or {}
     baselines = roadmap.get("baselines") or []
@@ -359,6 +397,7 @@ def _engineering_roadmap_html(roadmap: dict) -> str:
         "<div style='margin:16px 0 8px;border-top:1px solid #e5e7eb;padding-top:14px;'>",
         "<p style='margin:0 0 10px;font-size:12px;font-weight:700;color:#475569;"
         "text-transform:uppercase;'>Experimental setup</p>",
+        _first_experiment_panel(first),
         _dataset_panel(data),
         _metrics_panel(metrics),
         _comparison_panel(baselines, ablations),
@@ -366,6 +405,22 @@ def _engineering_roadmap_html(roadmap: dict) -> str:
     out.append(_feasibility_strip(effort, compute, risks))
     out.append("</div>")
     return "\n".join(out)
+
+
+def _first_experiment_panel(first: dict) -> str:
+    rows = [
+        ("Question", first.get("question") or "?"),
+        ("Minimal setup", first.get("minimal_setup") or "?"),
+        ("Go", first.get("go_criterion") or "?"),
+        ("Stop / pivot", first.get("stop_criterion") or "?"),
+        ("Runtime", first.get("estimated_runtime") or "?"),
+    ]
+    return _design_table(
+        "00",
+        "First Experiment",
+        "The smallest go/no-go test to run now",
+        rows,
+    )
 
 
 def _dataset_panel(data: object) -> str:

@@ -55,7 +55,7 @@ def measure_fin_uptake(concepts: list[str],
                 continue
             like_pattern = f"%{kw}%"
             rows = conn.execute(
-                """
+                f"""
                 SELECT p.id, p.title, p.publication_date
                 FROM papers p
                 JOIN paper_extractions e ON e.paper_id = p.id
@@ -66,6 +66,7 @@ def measure_fin_uptake(concepts: list[str],
                        OR LOWER(e.method_primary_json) LIKE ?
                        OR LOWER(e.domain_json) LIKE ?
                        OR LOWER(e.tags_json) LIKE ?)
+                  AND {db.TRIGGER_ELIGIBILITY_GUARD}
                 ORDER BY p.publication_date DESC
                 LIMIT 20
                 """,

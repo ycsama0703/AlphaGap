@@ -61,7 +61,7 @@ def aggregate_mechanism_papers(side: str, recent_end: date,
 
     with db.connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT p.id, p.title, p.publication_date, p.affiliations,
                    e.method_primary_json, e.mechanism_description_json,
                    e.side as ext_side,
@@ -76,7 +76,8 @@ def aggregate_mechanism_papers(side: str, recent_end: date,
               AND date(p.publication_date) <= ?
               AND e.mechanism_description_json IS NOT NULL
               AND e.mechanism_description_json != ''
-              AND e.mechanism_description_json != '{}'
+              AND e.mechanism_description_json != '{{}}'
+              AND {db.TRIGGER_ELIGIBILITY_GUARD}
             ORDER BY s.priority_score DESC NULLS LAST
             LIMIT ?
             """,

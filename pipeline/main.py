@@ -7,12 +7,11 @@ Usage:
 
 Daily flow:
     1. Ingest: fetch + filter + persist + L1/L2 extract
-    2. Trends: aggregate concepts, summarize via LLM
-    3. Gaps: generate (04+05) → self-check (06) → score (07)
-    4. Mapping actions: propose updates (08)
-    5. Inbox: write inbox/YYYY-MM-DD.md
-    6. Email: send daily digest via Resend
-    7. (Optional) Git commit + push inbox
+    2. Gaps: generate experiment candidates → self-check → score
+    3. Deep briefs: only for email-ready experiments
+    4. Inbox: write inbox/YYYY-MM-DD.md
+    5. Email: send daily experiment digest via Resend
+    6. (Optional) Git commit + push inbox
 """
 from __future__ import annotations
 
@@ -27,12 +26,8 @@ from rich.logging import RichHandler
 
 from . import db, ingest
 from .analyze import brief as brief_mod
-from .analyze import citations as cite_mod
-from .analyze import context as ctx_builder
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
-from .analyze import mapping_draft as draft_mod
-from .analyze import mapping_update as map_mod
 from .config import PROJECT_ROOT, load_settings
 from .llm_client import LLMClient
 from .output import email as email_mod
@@ -61,21 +56,14 @@ def run_daily(target_date: date | None = None,
     db.init_schema()
 
     # 1. Ingest
-    log.info("Step 1/6: ingest")
+    log.info("Step 1/5: ingest")
     ingest_stats = ingest.run_ingest(
         lookback_days=lookback, max_l1=max_l1, max_l2=max_l2,
     )
 
-    # 1.5. Citation snapshot — fetches latest citation counts from S2
-    log.info("Step 1.5/6: citation snapshot (S2)")
-    try:
-        cite_stats = cite_mod.snapshot_all_citations()
-        log.info("Citation snapshot: %s", cite_stats)
-    except Exception as e:
-        log.warning("Citation snapshot failed (non-fatal): %s", e)
-
-    # 2-3. Gap pipeline (also calls trends internally)
-    log.info("Step 2/6: gap pipeline (trends + 04 + 05 + 06 + 07)")
+    # 2. Experiment-first gap pipeline. Trend/citation maintenance is not on the
+    # critical path: daily output should spend time on runnable experiments.
+    log.info("Step 2/5: experiment-first gap pipeline (04 + 05 + 06 + 07)")
     client = LLMClient()
     gap_result = gaps_mod.run_gap_pipeline(
         target_date, adversarial_review=s.adversarial_gap_review, client=client,
@@ -83,17 +71,12 @@ def run_daily(target_date: date | None = None,
 
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])
-    downstream_accepted = [
-        item for item in gap_result["accepted"]
-        if not item.get("_email_suppressed_by")
-    ]
-
-    # 3.5. Deep briefs are generated only after an idea reaches engineering form.
+    # 3. Deep briefs are generated only after an idea reaches runnable engineering form.
     engineering_email_ready = [
         item for item in gap_result["email_ready"]
         if item.get("type") == "engineering"
     ]
-    log.info("Step 3/6: deep briefs (Prompt 09) for %d engineering email-ready gaps",
+    log.info("Step 3/5: deep briefs (Prompt 09) for %d runnable experiments",
              len(engineering_email_ready))
     brief_mod.generate_and_save_briefs(
         target_date,
@@ -104,24 +87,10 @@ def run_daily(target_date: date | None = None,
         client=client,
     )
 
-    # 3.75. Mapping drafts — human-reviewable, not loaded as official mappings yet.
-    log.info("Step 3/6: mapping drafts for %d unique accepted gaps",
-             len(downstream_accepted))
-    mapping_drafts = draft_mod.generate_and_save_mapping_drafts(
-        target_date,
-        downstream_accepted,
-    )
-
-    # 4. Mapping actions
-    log.info("Step 3/6: mapping update proposals (08)")
-    today_papers_for_map = gap_result["context"]["ai_recent_papers"] + \
-                            gap_result["context"]["fin_recent_papers"]
-    mapping_actions = map_mod.propose_mapping_updates(
-        today_papers_for_map,
-        gap_result["context"]["existing_mappings"],
-        downstream_accepted,
-        client=client,
-    )
+    # Mapping/taxonomy maintenance is deliberately excluded from daily delivery.
+    # Promote a proven experiment into mappings only after human review.
+    mapping_drafts: list[dict] = []
+    mapping_actions: list[dict] = []
 
     # Assemble inbox/email payload
     payload = {
@@ -141,6 +110,7 @@ def run_daily(target_date: date | None = None,
             "fin_fields_available": [
                 f.get("id") for f in gap_result["context"].get("fin_field_boundaries_all", [])
             ],
+            "daily_mode": "experiment_first",
         },
         "top_papers": gap_result["context"]["ai_recent_papers"][:5] +
                       gap_result["context"]["fin_recent_papers"][:3],
@@ -158,20 +128,20 @@ def run_daily(target_date: date | None = None,
         "mapping_actions": mapping_actions,
     }
 
-    # 5. Inbox
-    log.info("Step 4/6: write inbox markdown")
+    # 4. Inbox
+    log.info("Step 4/5: write inbox markdown")
     inbox_path = inbox_mod.write_daily_inbox(target_date, payload)
 
-    # 6. Email
-    log.info("Step 5/6: send email")
+    # 5. Email
+    log.info("Step 5/5: send email")
     try:
         email_mod.send_daily_email(target_date, payload)
     except Exception as e:
         log.error("Email send failed: %s", e)
 
-    # 7. Git commit (optional, server-side cron should enable)
+    # Optional persistence (server-side cron may enable)
     if git_commit and not s.dry_run:
-        log.info("Step 6/6: git commit + push")
+        log.info("Persist inbox: git commit + push")
         try:
             _git_commit_inbox(inbox_path, target_date)
         except Exception as e:

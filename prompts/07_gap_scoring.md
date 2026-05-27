@@ -1,6 +1,6 @@
 # Prompt 07: Gap Scoring（通过自检的 gap 才跑）
 
-**用途**：对每个 accept 的 gap 评 novelty、actionability、theoretical_support。邮件筛选的总分暂时仍沿用 novelty/actionability；theoretical_support 作为独立研究质量维度展示。
+**用途**：对每个 accept 的 gap 评 novelty、actionability、theoretical_support。邮件只发送通过审查的工程型最小实验；理论项只在 inbox 留档讨论。
 
 **模型建议**：DeepSeek-V3.5  
 **温度**：0  
@@ -42,6 +42,8 @@
 判分时参考：
 - 理论型 gap：actionability 上限 ≤ 6（因为没有实验路线）
 - 工程型 gap：根据 experimental_roadmap 完整度和现实度评分
+- 工程型 gap 若 `first_experiment` 没有明确 go/no-go 结果判据，actionability 不得超过 6
+- `frontier_extension` 属于理论型人工讨论项：新控制点清楚可提升 novelty，但尚未批准为 cell 时不得因表面新颖而高估 actionability
 
 【维度 3：theoretical_support 理论背书强度（1-10）】
 评估这个 AI→Fin 迁移假设是否有清晰、可检验、结构上成立的理论机制支撑。它不是看引用数量，而是看迁移逻辑是否站得住。
@@ -52,6 +54,10 @@
 3. assumption_transferability：AI 机制成立的关键前提，Fin 侧是否满足或可通过 bridge 满足
 4. identifiable_prediction：是否能提出可证伪的中间机制预测，而不只是最终 Sharpe/收益提高
 5. theoretical_anchors：是否能接到已有理论框架，如统计学习、因果推断、信息论、优化、RL credit assignment、资产定价、市场微观结构、非平稳时间序列等
+
+对于 `frontier_extension`，还要核验 `proposed_cell` 是否真正解释了现有
+transfer cells 无法承载的 failure/control point；若只是换名字，
+failure_mode_match 与 identifiable_prediction 应给低分。
 
 评分标准：
 - 9-10: 结构高度同构，failure mode 明确一致，关键前提大多满足，有可检验中间预测，并能接到成熟理论框架
@@ -67,7 +73,7 @@
 4. theoretical_support 由 pipeline 按 5 个子分平均计算；你也可输出该字段，但 pipeline 会重算
 5. 每个主分附 ≤ 25 字 reason
 6. total 暂时仍为 round((novelty + actionability) / 2, 1)，不要把 theoretical_support 混入 total
-7. 总分 ≥ 8 才会进入邮件展示，所以打分要严肃，不要全员高分
+7. 仅工程型且总分 ≥ 8 才会进入邮件展示；理论型即使新颖也仅进入 inbox 人工讨论
 ```
 
 ## User Prompt Template
@@ -135,5 +141,5 @@
 
 ## 邮件展示规则
 
-- total ≥ 8 进当日邮件
-- 其余进 `inbox/yyyy-mm-dd.md` 全量审批文件，你 git pull 后可见
+- engineering 且 total ≥ 8 进当日邮件
+- theoretical / frontier_extension 仅进 `inbox/yyyy-mm-dd.md` 全量审批文件

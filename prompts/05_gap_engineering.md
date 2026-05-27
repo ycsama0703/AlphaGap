@@ -46,6 +46,8 @@
 - motivation 和 research_context.fin_current_state 必须说明该金融机制边界，而不是只说 "Fin 侧还没有用某 AI 技术"
 - 如果实验落入 bad_transfer_targets（如无约束 LLM trading），默认不要输出；除非 roadmap 明确加入 point-in-time、cost、risk、constraint、audit 等机制来绕开失败原因
 - benchmark / paper 名字只能作为 evidence 或 baseline，不允许作为实验方案的核心组织概念
+- fin_transfer_cells 是人工维护的正式实验单元。工程型 gap 只可升级 `opportunity_mode="grounded_transfer"` 的理论 gap，必须选择一个 active cell，并将 roadmap 的 data、metrics、baselines 与 failure mode 落在该 cell 的 experiment_anchor 上。
+- `opportunity_mode="frontier_extension"` 是待人工审议的新 cell 提案，不得在本步骤升级为工程型 gap 或 deep brief。
 
 观察窗口（重要）：
 - ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
@@ -71,7 +73,9 @@
      * open_bottleneck: 尽量来自该 field 的 open_bottlenecks[*].name
      * good_transfer_target: 尽量来自该 field 的 good_transfer_targets
      * bad_target_avoided: 若该方向容易落入 bad_transfer_targets，说明避开了哪条
-     * why_aligned: 一句话说明该实验为什么确实落在这个金融机制边界上
+      * why_aligned: 一句话说明该实验为什么确实落在这个金融机制边界上
+      * transfer_cell_id: 必须来自 fin_transfer_cells[*].cell_id；没有合适 cell 时不要输出工程型 gap
+      * opportunity_mode: 必须为 "grounded_transfer"
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
@@ -100,7 +104,13 @@
    - data 写"使用合适的数据集"或挤成不区分样本、时间与切分的一段话 ← 必须结构化
    - method 写"用 LLM 处理" ← 必须说怎么用、什么模型、什么提示策略
    - baselines 只列 1 个或全是"vanilla baseline"
-4. 数量：0-3 条。质量优先，宁缺勿滥。
+4. 数量：0-2 条。质量优先，宁缺勿滥。每日邮件的主体就是这 1-2 个可立即推进的实验。
+5. 每条 engineering gap 必须包含 `experimental_roadmap.first_experiment`：
+   - question: 第一个实验只回答哪一个关键问题
+   - minimal_setup: 最小数据切片、最小模型/对照和一个核心消融
+   - go_criterion: 看到什么结果才值得继续投入
+   - stop_criterion: 看到什么结果就应停止或 pivot
+   - estimated_runtime: 跑出判断所需的现实时间
 
 判断是否升级理论型→工程型：
 - 如果某个理论型 gap 你能想清楚【完整实验路线】，升级为工程型并填完整 roadmap
@@ -126,6 +136,13 @@
     "why_this_matters": "因子搜索每年学术+产业大量重复劳动，verifier 闭环若能稳定降低 OOS 衰减率 20%+，工业界直接落地价值显著；学术上也是 'AI agent for scientific discovery' 在金融领域的首个端到端方案。"
   },
   "experimental_roadmap": {
+    "first_experiment": {
+      "question": "验证 verifier feedback 是否在相同生成预算下减少不可执行或泄漏公式",
+      "minimal_setup": "只用 100 个公式候选和月频 point-in-time 子样本；比较无 verifier 与 verifier loop；消融去掉执行错误反馈",
+      "go_criterion": "无效公式率至少下降 30%，且 validation IC 不下降",
+      "stop_criterion": "无效率改善低于 10% 或仅靠增加调用预算获得改善",
+      "estimated_runtime": "1-2 天"
+    },
     "data": {
       "sources": ["CRSP monthly returns", "Compustat annual fundamentals"],
       "sample": "美股普通股；剔除价格低于 5 美元股票，纳入 delisting return",
@@ -183,7 +200,7 @@
 ## User Prompt Template
 
 ```
-基于以下数据产出工程型 gap（0-3 条）。
+基于以下数据产出工程型 gap（0-2 条）。邮件只会发送这里通过审查的可运行实验。
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
@@ -196,13 +213,15 @@
 【Fin 侧趋势】 {fin_trends_json}
 【现有 mappings】 {existing_mappings_json}
 【Fin 领域边界 notes（机制层级，用于判断金融侧真实边界）】 {fin_field_boundaries_json}
+【Active Fin transfer cells（正式实验锚点，工程 gap 必须选择一个）】 {fin_transfer_cells_json}
 【Fin 侧关键词命中次数 (fin_uptake - 硬负面证据)】 {fin_uptake_json}
 对每个 AI 概念，先查 fin_uptake 的 match_strength；如果是 explored 但你坚持要提 engineering gap，必须在 motivation 中说明差异化角度。
 【今日已产出的理论型 gap（可升级为工程型）】 {theoretical_gaps_today_json}
 
 要求：
 - 每条 gap 必须包含完整 experimental_roadmap，所有字段不可省略
-- 宁缺勿滥，输出 0-3 条
+- `first_experiment` 必须是一项最小 go/no-go 实验，不是未来工作计划
+- 宁缺勿滥，输出 0-2 条
 - 不确定的细节，宁可留在理论型（你可以输出空数组）
 
 Schema:
@@ -211,6 +230,7 @@ Schema:
     {
       "hypothesis": string,
       "motivation": string,
+      "opportunity_mode": "grounded_transfer",
       "field_boundary_alignment": {
         "field_id": string,
         "mechanism_family": string,
@@ -232,6 +252,13 @@ Schema:
         "why_this_matters": string
       },
       "experimental_roadmap": {
+        "first_experiment": {
+          "question": string,
+          "minimal_setup": string,
+          "go_criterion": string,
+          "stop_criterion": string,
+          "estimated_runtime": string
+        },
         "data": {
           "sources": [string],
           "sample": string,
@@ -281,5 +308,6 @@ Schema:
 | baselines < 2 个 | 自检 drop |
 | anchor_papers 编造 | pipeline 校验 paper_id 必须存在 |
 | method 步骤 < 3 步 | 自检 drop |
+| 缺少可判定成败的 first_experiment | 自检 downgrade |
 | 全是 "TBD" | 自检 drop，邮件不展示 |
 | compute_profile 缺失 | 自检提示，但不影响评分；下次 prompt 强化 |

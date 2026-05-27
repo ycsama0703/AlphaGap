@@ -38,12 +38,17 @@ class LLMClient:
         self.provider = s.llm_provider
         self._model_default = s.llm_model_default
         self._model_reasoning = s.llm_model_reasoning
+        self._model_brief = s.llm_model_brief
         self._input_cost_per_m = s.llm_input_cost_per_m
         self._output_cost_per_m = s.llm_output_cost_per_m
+        self._reasoning_input_cost_per_m = s.llm_reasoning_input_cost_per_m
+        self._reasoning_output_cost_per_m = s.llm_reasoning_output_cost_per_m
+        self._brief_input_cost_per_m = s.llm_brief_input_cost_per_m
+        self._brief_output_cost_per_m = s.llm_brief_output_cost_per_m
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._reported_cost_usd = 0.0
-        self._has_reported_cost = False
+        self._unreported_cost_usd = 0.0
 
     def chat_json(
         self,
@@ -63,12 +68,13 @@ class LLMClient:
                 user=user,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                reasoning=reasoning,
             )
         except (ValueError, json.JSONDecodeError) as exc:
-            if not reasoning or self._model_reasoning == self._model_default:
+            if not reasoning:
                 raise
             log.warning(
-                "Reasoning JSON response unusable (%s); retrying with default model %s",
+                "Reasoning JSON response unusable (%s); retrying non-thinking with default model %s",
                 exc,
                 self._model_default,
             )
@@ -78,21 +84,18 @@ class LLMClient:
                 user=user,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                reasoning=False,
             )
 
     def _chat_json_once(self, *, model: str, system: str, user: str,
-                        temperature: float, max_tokens: int) -> dict[str, Any]:
+                        temperature: float, max_tokens: int,
+                        reasoning: bool) -> dict[str, Any]:
+        request = self._request_args(model, system, user, temperature, max_tokens, reasoning)
+        request["response_format"] = {"type": "json_object"}
         resp = self._client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
+            **request,
         )
-        self._record_usage(resp.usage)
+        self._record_usage(resp.usage, reasoning=reasoning)
 
         content = resp.choices[0].message.content
         if not content or not content.strip():
@@ -110,6 +113,28 @@ class LLMClient:
             log.error("JSON parse failed: %s\ncontent[:500]=%r", e, content[:500])
             raise
 
+    def _request_args(
+        self, model: str, system: str, user: str, temperature: float,
+        max_tokens: int, reasoning: bool,
+    ) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": max_tokens,
+        }
+        if self.provider == "deepseek":
+            request["extra_body"] = {
+                "thinking": {"type": "enabled" if reasoning else "disabled"}
+            }
+            if not reasoning:
+                request["temperature"] = temperature
+        else:
+            request["temperature"] = temperature
+        return request
+
     def chat_text(
         self,
         system: str,
@@ -117,23 +142,19 @@ class LLMClient:
         *,
         temperature: float = 0.0,
         reasoning: bool = False,
+        brief: bool = False,
         max_tokens: int = 4096,
     ) -> str:
         """Call an LLM for non-JSON text while preserving usage accounting."""
-        model = self._model_reasoning if reasoning else self._model_default
+        model = self._model_brief if brief else self._model_reasoning if reasoning else self._model_default
+        thinking_enabled = reasoning or brief
         resp = self._client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
+            **self._request_args(model, system, user, temperature, max_tokens, thinking_enabled),
         )
-        self._record_usage(resp.usage)
+        self._record_usage(resp.usage, reasoning=reasoning, brief=brief)
         return resp.choices[0].message.content or ""
 
-    def _record_usage(self, usage: object | None) -> None:
+    def _record_usage(self, usage: object | None, *, reasoning: bool, brief: bool = False) -> None:
         if not usage:
             return
         self._total_input_tokens += usage.prompt_tokens
@@ -141,21 +162,28 @@ class LLMClient:
         reported_cost = _usage_cost(usage)
         if reported_cost is not None:
             self._reported_cost_usd += reported_cost
-            self._has_reported_cost = True
+            return
+        if brief:
+            input_cost = self._brief_input_cost_per_m
+            output_cost = self._brief_output_cost_per_m
+        elif reasoning:
+            input_cost = self._reasoning_input_cost_per_m
+            output_cost = self._reasoning_output_cost_per_m
+        else:
+            input_cost = self._input_cost_per_m
+            output_cost = self._output_cost_per_m
+        if input_cost is not None and output_cost is not None:
+            self._unreported_cost_usd += (
+                (usage.prompt_tokens / 1e6) * input_cost
+                + (usage.completion_tokens / 1e6) * output_cost
+            )
 
     @property
     def total_tokens(self) -> tuple[int, int]:
         return self._total_input_tokens, self._total_output_tokens
 
     def estimate_cost_usd(self) -> float:
-        if self._has_reported_cost:
-            return self._reported_cost_usd
-        if self._input_cost_per_m is None or self._output_cost_per_m is None:
-            return 0.0
-        return (
-            (self._total_input_tokens / 1e6) * self._input_cost_per_m
-            + (self._total_output_tokens / 1e6) * self._output_cost_per_m
-        )
+        return self._reported_cost_usd + self._unreported_cost_usd
 
 
 def _usage_cost(usage: object) -> float | None:

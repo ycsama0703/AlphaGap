@@ -19,8 +19,8 @@ def _gap_item():
             "actionability_reason": "actionable",
             "theoretical_support_reason": "grounded",
             "passes_email_threshold": True,
-            "email_gate": "theoretical_high_novelty",
-            "email_gate_reason": "theoretical gate",
+            "email_gate": "theoretical_discussion_only",
+            "email_gate_reason": "inbox discussion only",
         },
         "gap": {
             "_id": "TH-1",
@@ -46,6 +46,13 @@ def _engineering_gap_item():
         "_id": "ENG-1",
         "hypothesis": "用反馈修复 <因子公式> 并进行执行验证",
         "experimental_roadmap": {
+            "first_experiment": {
+                "question": "Does verifier feedback reduce invalid formulas?",
+                "minimal_setup": "100 formula candidates; no-verifier baseline; remove feedback ablation",
+                "go_criterion": "invalid rate decreases by 30%",
+                "stop_criterion": "improvement below 10%",
+                "estimated_runtime": "1-2 days",
+            },
             "data": {
                 "sources": ["CRSP", "Compustat"],
                 "sample": "US equities",
@@ -124,13 +131,61 @@ def test_email_card_renders_field_boundary_alignment():
 
     assert "Field: <b>financial_nlp</b>" in html
     assert "Evidence-Grounded Financial Retrieval" in html
-    assert "Gate: theoretical_high_novelty" in html
+    assert "Gate: theoretical_discussion_only" in html
+
+
+def test_frontier_extension_renders_as_proposed_new_cell():
+    item = _gap_item()
+    item["gap"]["opportunity_mode"] = "frontier_extension"
+    item["gap"]["proposed_cell"] = {
+        "new_failure_mode": "agent hides audit violations behind successful output",
+        "ai_intervention_class": "adversarial process monitoring",
+        "experiment_anchor_sketch": "tool traces; hidden-violation recall; static auditor",
+        "why_existing_cells_insufficient": "current cell checks accidental trace errors only",
+    }
+
+    html = _gap_card_html(item)
+
+    assert "FRONTIER EXTENSION" in html
+    assert "Proposed new transfer cell" in html
+    assert "hidden-violation recall" in html
+    assert "human review required" in html
+
+
+def test_inbox_renders_frontier_extension_for_manual_review(tmp_path: Path):
+    item = _gap_item()
+    item["gap"]["opportunity_mode"] = "frontier_extension"
+    item["gap"]["proposed_cell"] = {
+        "new_failure_mode": "hidden audit evasion",
+        "ai_intervention_class": "adversarial monitoring",
+        "experiment_anchor_sketch": "trace audit recall",
+        "why_existing_cells_insufficient": "uncovered strategic failure",
+    }
+    payload = {
+        "stats": {"cost_usd": 0.0},
+        "theoretical": [item["gap"]],
+        "engineering": [],
+        "accepted": [item],
+        "email_ready": [item],
+        "mapping_actions": [],
+        "mapping_drafts": [],
+    }
+
+    path = write_daily_inbox(date(2026, 5, 27), payload, out_dir=tmp_path)
+    text = path.read_text()
+
+    assert "frontier_extension" in text
+    assert "Proposed new transfer cell (not active)" in text
+    assert "hidden audit evasion" in text
 
 
 def test_email_engineering_card_renders_structured_experiment_panels():
     html = _gap_card_html(_engineering_gap_item())
 
     assert "Experimental setup" in html
+    assert "First Experiment" in html
+    assert "The smallest go/no-go test to run now" in html
+    assert "invalid rate decreases by 30%" in html
     assert ">Dataset<" in html
     assert ">Metrics<" in html
     assert "Decision use" in html
@@ -184,6 +239,8 @@ def test_inbox_renders_engineering_roadmap_tables_and_baseline_link(tmp_path: Pa
     text = path.read_text()
 
     assert "| Sources | CRSP; Compustat |" in text
+    assert "**First Experiment (go/no-go)**" in text
+    assert "| Go | invalid rate decreases by 30% |" in text
     assert "| Primary | repair success rate | higher than rule repair |" in text
     assert "[Author et al. (2025)](https://arxiv.org/abs/2501.00001)" in text
 

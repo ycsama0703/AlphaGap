@@ -1,10 +1,13 @@
 from pipeline.analyze.context import (
     fin_field_for_prompt,
+    load_ai_innovation_playbook,
     load_fin_field_notes,
+    load_fin_transfer_cells,
     mapping_brief,
     mapping_for_prompt,
     paper_for_prompt,
     select_fin_field_notes,
+    select_fin_transfer_cells,
 )
 from pipeline.analyze import gaps as gaps_mod
 
@@ -172,6 +175,34 @@ Gap relevance: schema compression.
     assert notes[0]["mechanism_families"][0]["name"] == "Routing"
 
 
+def test_load_transfer_cells_contains_experiment_anchors():
+    cells = load_fin_transfer_cells()
+    executable = next(cell for cell in cells if cell["cell_id"] == "factor.executable_repair")
+
+    assert len(cells) == 30
+    assert executable["field_id"] == "factor_investing"
+    assert executable["experiment_anchor"]["primary_metric"]
+
+
+def test_load_ai_innovation_playbook_contains_frontier_extension_rules():
+    playbook = load_ai_innovation_playbook()
+
+    assert "Runtime Prompt Digest" in playbook
+    assert "Process verification" in playbook
+    assert "`frontier_extension`" in playbook
+    assert "cannot be expressed by existing cells" in playbook
+
+
+def test_select_transfer_cells_limits_daily_taxonomy_to_selected_fields():
+    cells = [
+        {"cell_id": "factor.a", "field_id": "factor_investing"},
+        {"cell_id": "nlp.a", "field_id": "financial_nlp"},
+    ]
+    selected = select_fin_transfer_cells(cells, [{"id": "financial_nlp"}])
+
+    assert selected == [{"cell_id": "nlp.a", "field_id": "financial_nlp"}]
+
+
 def test_select_fin_field_notes_prefers_relevant_topics():
     notes = [
         {
@@ -285,7 +316,17 @@ def test_build_gap_context_uses_selected_fin_fields(monkeypatch):
     monkeypatch.setattr(gaps_mod.ctx_builder, "get_top_papers", fake_papers)
     monkeypatch.setattr(gaps_mod.ctx_builder, "load_existing_mappings", lambda: [])
     monkeypatch.setattr(gaps_mod.ctx_builder, "load_fin_field_notes", lambda: notes)
-    monkeypatch.setattr(gaps_mod.trends_mod, "summarize_trends", lambda *args, **kwargs: {})
+    monkeypatch.setattr(gaps_mod.ctx_builder, "load_fin_transfer_cells", lambda: [
+        {"cell_id": "nlp.retrieval", "field_id": "financial_nlp"},
+        {"cell_id": "factor.search", "field_id": "factor_investing"},
+    ])
+    monkeypatch.setattr(
+        gaps_mod.trends_mod,
+        "summarize_trends",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("daily context must not run expensive trend clustering")
+        ),
+    )
     monkeypatch.setattr(gaps_mod.uptake_mod, "extract_ai_concepts_for_uptake", lambda *args, **kwargs: [])
     monkeypatch.setattr(gaps_mod.uptake_mod, "measure_fin_uptake", lambda *args, **kwargs: {})
 
@@ -294,6 +335,14 @@ def test_build_gap_context_uses_selected_fin_fields(monkeypatch):
     assert [f["id"] for f in ctx["fin_field_boundaries"]][0] == "financial_nlp"
     assert len(ctx["fin_field_boundaries"]) == 3
     assert len(ctx["fin_field_boundaries_all"]) == 4
+    assert {c["cell_id"] for c in ctx["fin_transfer_cells"]} == {
+        "nlp.retrieval", "factor.search",
+    }
+    assert "Runtime Prompt Digest" in ctx["ai_innovation_playbook"]
+    assert ctx["trends_included"] is False
+    assert ctx["ai_trends"] == {
+        "rising": [], "falling": [], "new_emergence": [], "stable_hot": [],
+    }
 
 
 def test_select_top_candidates_diversifies_by_field():
@@ -303,18 +352,22 @@ def test_select_top_candidates_diversifies_by_field():
             "idx": i,
             "ai_category": f"cat{i}",
             "fin_uptake_status": "open_gap",
+            "opportunity_mode": "grounded_transfer",
             "field_boundary_alignment": {
                 "field_id": "factor_investing",
                 "mechanism_family": "Formulaic Alpha Search",
+                "transfer_cell_id": "factor.search",
             },
         })
     candidates.append({
         "idx": 6,
         "ai_category": "cat6",
         "fin_uptake_status": "open_gap",
+        "opportunity_mode": "grounded_transfer",
         "field_boundary_alignment": {
             "field_id": "financial_nlp",
             "mechanism_family": "Evidence-Grounded Financial Retrieval",
+            "transfer_cell_id": "nlp.retrieval",
         },
     })
 
@@ -333,7 +386,11 @@ def test_candidate_enumeration_uses_reasoning_model():
     class FakeClient:
         def chat_json(self, **kwargs):
             calls.append(kwargs)
-            return {"candidates": [{"ai_anchor_paper_id": "ai1"}]}
+            return {"candidates": [{
+                "ai_anchor_paper_id": "ai1",
+                "opportunity_mode": "grounded_transfer",
+                "field_boundary_alignment": {"transfer_cell_id": "factor.search"},
+            }]}
 
     ctx = {
         "ai_recent_papers": [],
@@ -342,14 +399,98 @@ def test_candidate_enumeration_uses_reasoning_model():
         "fin_trends": {},
         "existing_mappings": [],
         "fin_field_boundaries": [],
+        "fin_transfer_cells": [{"cell_id": "factor.search"}],
+        "ai_innovation_playbook": "calibration pattern",
         "fin_uptake": {},
         "_valid_ai_ids": {"ai1"},
+        "_valid_transfer_cell_ids": {"factor.search"},
     }
 
     candidates = gaps_mod.enumerate_candidates(ctx, client=FakeClient())
 
     assert len(candidates) == 1
     assert calls[0]["reasoning"] is True
+    assert "calibration pattern" in calls[0]["user"]
+
+
+def test_candidate_enumeration_allows_well_specified_frontier_extension():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"candidates": [{
+                "idx": 1,
+                "ai_anchor_paper_id": "ai1",
+                "opportunity_mode": "frontier_extension",
+                "field_boundary_alignment": {"field_id": "financial_llm_agents"},
+                "proposed_cell": {
+                    "new_failure_mode": "hidden audit evasion",
+                    "ai_intervention_class": "adversarial monitoring",
+                    "experiment_anchor_sketch": "tool traces and violation recall",
+                    "why_existing_cells_insufficient": "current cells check mistakes, not evasion",
+                },
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_transfer_cells": [],
+        "ai_innovation_playbook": "",
+        "fin_uptake": {},
+        "_valid_ai_ids": {"ai1"},
+        "_valid_transfer_cell_ids": {"agents.trace_audit"},
+    }
+
+    candidates = gaps_mod.enumerate_candidates(ctx, client=FakeClient())
+
+    assert len(candidates) == 1
+    assert candidates[0]["opportunity_mode"] == "frontier_extension"
+
+
+def test_candidate_enumeration_rejects_underspecified_frontier_extension():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"candidates": [{
+                "idx": 1,
+                "ai_anchor_paper_id": "ai1",
+                "opportunity_mode": "frontier_extension",
+                "field_boundary_alignment": {"field_id": "financial_llm_agents"},
+                "proposed_cell": {"new_failure_mode": "some failure"},
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_transfer_cells": [],
+        "fin_uptake": {},
+        "_valid_ai_ids": {"ai1"},
+        "_valid_transfer_cell_ids": {"agents.trace_audit"},
+    }
+
+    assert gaps_mod.enumerate_candidates(ctx, client=FakeClient()) == []
+
+
+def test_select_top_candidates_limits_frontier_extensions():
+    candidates = [
+        {
+            "idx": i,
+            "ai_category": f"cat{i}",
+            "fin_uptake_status": "open_gap",
+            "opportunity_mode": "frontier_extension",
+            "field_boundary_alignment": {"field_id": f"field{i}"},
+        }
+        for i in range(1, 5)
+    ]
+
+    selected = gaps_mod.select_top_candidates(candidates, top_n=4)
+
+    assert len(selected) == gaps_mod.MAX_FRONTIER_CANDIDATES_SELECTED
 
 
 def test_generated_theoretical_gap_inherits_candidate_field_alignment():
@@ -418,6 +559,35 @@ def test_generated_theoretical_gap_inherits_candidate_risk_audit():
     assert gaps[0]["risk_audit"] == audit
     assert gaps[0]["_origin"]["candidate_idx"] == 7
     assert gaps[0]["_origin"]["audit_verdict"] == "revise"
+
+
+def test_generated_theoretical_gap_inherits_frontier_route():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"gaps": [{"source_candidate_idx": 7, "hypothesis": "new monitor gap"}]}
+
+    proposal = {
+        "new_failure_mode": "hidden audit evasion",
+        "ai_intervention_class": "adversarial monitoring",
+        "experiment_anchor_sketch": "trace recall",
+        "why_existing_cells_insufficient": "new strategic failure",
+    }
+    ctx = {
+        "ai_recent_papers": [], "fin_recent_papers": [], "ai_trends": {},
+        "fin_trends": {}, "existing_mappings": [], "fin_field_boundaries": [],
+        "fin_uptake": {}, "ai_innovation_playbook": "",
+    }
+
+    gaps = gaps_mod.generate_theoretical_gaps(
+        ctx, client=FakeClient(), candidates=[{
+            "idx": 7,
+            "opportunity_mode": "frontier_extension",
+            "proposed_cell": proposal,
+        }],
+    )
+
+    assert gaps[0]["opportunity_mode"] == "frontier_extension"
+    assert gaps[0]["proposed_cell"] == proposal
 
 
 def test_theoretical_expansion_retries_candidates_individually_after_batch_failure():
@@ -509,6 +679,7 @@ def test_engineering_gap_inherits_theoretical_audit_origin():
     }
     theoretical = [{
         "_id": "TH-1",
+        "opportunity_mode": "grounded_transfer",
         "_origin": {"candidate_idx": 7, "audit_verdict": "revise"},
         "risk_audit": {"verdict": "revise"},
     }]
@@ -544,7 +715,10 @@ def test_engineering_expansion_retries_theories_individually_after_batch_failure
         "fin_field_boundaries": [],
         "fin_uptake": {},
     }
-    theories = [{"_id": "TH-1"}, {"_id": "TH-2"}]
+    theories = [
+        {"_id": "TH-1", "opportunity_mode": "grounded_transfer"},
+        {"_id": "TH-2", "opportunity_mode": "grounded_transfer"},
+    ]
 
     gaps = gaps_mod.generate_engineering_gaps(
         ctx,
@@ -586,7 +760,10 @@ def test_engineering_expansion_keeps_successful_recovery_when_one_theory_fails()
 
     gaps = gaps_mod.generate_engineering_gaps(
         ctx,
-        [{"_id": "TH-1"}, {"_id": "TH-2"}],
+        [
+            {"_id": "TH-1", "opportunity_mode": "grounded_transfer"},
+            {"_id": "TH-2", "opportunity_mode": "grounded_transfer"},
+        ],
         client=FakeClient(),
         adversarial_mode=True,
     )
@@ -594,3 +771,17 @@ def test_engineering_expansion_keeps_successful_recovery_when_one_theory_fails()
     assert len(gaps) == 1
     assert gaps[0]["_id"] == "ENG-1"
     assert gaps[0]["upgraded_from_theoretical"] == "TH-2"
+
+
+def test_frontier_extension_does_not_expand_into_engineering_gap():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            raise AssertionError("frontier proposal must remain theoretical pending review")
+
+    gaps = gaps_mod.generate_engineering_gaps(
+        {},
+        [{"_id": "TH-1", "opportunity_mode": "frontier_extension"}],
+        client=FakeClient(),
+    )
+
+    assert gaps == []

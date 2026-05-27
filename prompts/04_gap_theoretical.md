@@ -67,13 +67,13 @@ pipeline 调用前聚合：
 ```
 你是一个 AI×Fin 跨学科研究分析师，目标是发现金融研究尚未利用的 AI 前沿技术。
 
-任务：基于近期 AI 论文、近期 Fin 论文、现有 mappings 表，产出 0-5 条【理论型 gap】候选。
+任务：基于近期 AI 论文、近期 Fin 论文、现有 mappings 表，产出 0-4 条【理论型 gap】候选，作为工程实验升级前的机制筛选。
 
 什么是【理论型 gap】？
 - 一个 AI 侧已成熟或新兴的技术 X，金融领域【还未应用】或【应用很浅】，但有合理理由认为可迁移
-- 不强求可立即做实验，但必须有清晰的 conceptual hypothesis 和迁移逻辑
-- 它的价值在于【启发研究方向】，不在于【马上做实验】
-  （需要做实验的会由另一个 prompt 处理为工程型）
+- 必须有清晰的 conceptual hypothesis、迁移逻辑和最小可证伪实验锚点
+- 它的价值是帮助挑出下一步值得写成实验的方向；不能把无限发散当作输出目标
+- 只有升级为工程型、写清 dataset / metrics / baselines / first experiment 的项目才可进入每日邮件
 
 观察窗口（重要）：
 - 输入中 ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
@@ -120,6 +120,11 @@ pipeline 调用前聚合：
   - verdict="pass"：仍需在 reasoning_chain 中回答 strongest_objection
   - verdict="revise"：必须采用 revised_one_liner 的收窄方向，并在 structural_mapping / why_open_gap 中落实 required_revision
   - 不得绕开已审计 candidate 另起一个未经审查的方向
+- 精选 candidate 的 `innovation_translation` 来自上游 AI innovation playbook 校准：必须在 reasoning_chain 中落实其 broken_assumption / new_control_point / finance_homologous_failure，不得退化为论文品牌迁移。
+- 每个理论 gap 必须填写 `opportunity_mode`：
+  - `grounded_transfer`：现有 `fin_transfer_cells` 可以承载该实验，必须选择 active `transfer_cell_id`
+  - `frontier_extension`：AI 新控制点揭示出 selected Fin field 中未被 active cells 覆盖的新 failure mode。允许没有 transfer_cell_id，但必须填写 `proposed_cell`，解释旧 cells 为什么不足，并给出可证伪的最小实验锚点
+- `frontier_extension` 是人工讨论项，不能声称已经成为正式研究单元，也不进入每日邮件。
 
 输出原则：
 1. 严格 JSON，无前后缀
@@ -138,6 +143,7 @@ pipeline 调用前聚合：
      * mechanism_family: 必须来自该 field 的 mechanism_families[*].name
      * open_bottleneck: 尽量来自该 field 的 open_bottlenecks[*].name
      * good_transfer_target: 尽量来自该 field 的 good_transfer_targets
+     * transfer_cell_id: `grounded_transfer` 时必须来自 fin_transfer_cells[*].cell_id；`frontier_extension` 时填写空字符串
      * bad_target_avoided: 若该方向容易落入 bad_transfer_targets，说明避开了哪条
      * why_aligned: 一句话说明该 gap 为什么确实落在这个金融机制边界上
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
@@ -147,6 +153,8 @@ pipeline 调用前聚合：
    - reasoning_chain: 3-5 步的迁移推理（为什么 AI 的 X 可能用于 Fin 的 Y？）
    - why_open_gap: 为何认定 Fin 侧还没用上（必须基于 fin_recent_papers / existing_mappings 的负面证据）
    - related_mappings: 若与 existing_mappings 有关联，列出 ID
+   - opportunity_mode: "grounded_transfer" | "frontier_extension"
+   - proposed_cell: 仅 `frontier_extension` 必填，包含 new_failure_mode / ai_intervention_class / experiment_anchor_sketch / why_existing_cells_insufficient
 3. 必须避免：
    - 与 existing_mappings 中 status != "refuted" 的条目重复（去重）
    - 太显然（"用 deep learning 预测股价" 这种已被做烂的）
@@ -196,7 +204,7 @@ pipeline 调用前聚合：
 ## User Prompt Template
 
 ```
-基于以下数据产出理论型 gap 候选（0-5 条）。
+基于以下数据产出理论型 gap 候选（0-4 条），目的是筛出可升级为最小实验的方向。
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
@@ -216,6 +224,9 @@ pipeline 调用前聚合：
 【Fin 领域边界 notes（机制层级，用于判断金融侧真实边界）】
 {fin_field_boundaries_json}
 
+【Active Fin transfer cells（grounded_transfer 必须使用；frontier_extension 用于说明为何需要新增 cell）】
+{fin_transfer_cells_json}
+
 【Fin 侧关键词命中次数 (fin_uptake - 硬负面证据)】
 {fin_uptake_json}
 对每个你考虑的 AI 概念，先查 fin_uptake 里它的 match_strength：
@@ -229,6 +240,7 @@ pipeline 调用前聚合：
     {
       "hypothesis": string,
       "source_candidate_idx": number | null,
+      "opportunity_mode": "grounded_transfer" | "frontier_extension",
       "ai_anchor": {"paper_id": string, "concept": string},
       "fin_anchor": {"description": string, "evidence_paper_ids": [string]},
       "field_boundary_alignment": {
@@ -239,6 +251,12 @@ pipeline 调用前聚合：
         "bad_target_avoided": string,
         "why_aligned": string
       },
+      "proposed_cell": {
+        "new_failure_mode": string,
+        "ai_intervention_class": string,
+        "experiment_anchor_sketch": string,
+        "why_existing_cells_insufficient": string
+      } | {},
       "structural_mapping": {
         "ai_data_structure": string,
         "fin_data_structure": string,

@@ -6,8 +6,8 @@ Two dimensions:
   theoretical_support: how well grounded the transfer mechanism is.
 Total currently remains avg(novelty, actionability). Only total >=
 ENGINEERING_EMAIL_THRESHOLD makes engineering gaps email-ready. Theoretical gaps
-use a separate high-novelty gate so valuable conceptual ideas are not hidden
-only because they are less immediately actionable.
+remain in the inbox for human discussion; daily email is reserved for runnable
+experiments.
 """
 from __future__ import annotations
 
@@ -23,10 +23,6 @@ from ..llm_client import LLMClient
 log = logging.getLogger(__name__)
 
 ENGINEERING_EMAIL_THRESHOLD = 8.0
-THEORETICAL_EMAIL_TOTAL_THRESHOLD = 6.5
-THEORETICAL_EMAIL_NOVELTY_THRESHOLD = 9
-THEORETICAL_EMAIL_ACTIONABILITY_THRESHOLD = 4
-THEORETICAL_EMAIL_SUPPORT_THRESHOLD = 5.0
 SCORING_MAX_TOKENS = 8192
 
 
@@ -105,20 +101,12 @@ def email_gate_result(gap_type: str, *, novelty: int, actionability: int,
             ),
         }
 
-    passes = (
-        total >= THEORETICAL_EMAIL_TOTAL_THRESHOLD
-        and novelty >= THEORETICAL_EMAIL_NOVELTY_THRESHOLD
-        and actionability >= THEORETICAL_EMAIL_ACTIONABILITY_THRESHOLD
-        and theoretical_support >= THEORETICAL_EMAIL_SUPPORT_THRESHOLD
-    )
     return {
-        "passes": passes,
-        "gate": "theoretical_high_novelty",
+        "passes": False,
+        "gate": "theoretical_discussion_only",
         "reason": (
-            f"theoretical gate: total {total}/{THEORETICAL_EMAIL_TOTAL_THRESHOLD}, "
-            f"novelty {novelty}/{THEORETICAL_EMAIL_NOVELTY_THRESHOLD}, "
-            f"actionability {actionability}/{THEORETICAL_EMAIL_ACTIONABILITY_THRESHOLD}, "
-            f"theory {theoretical_support}/{THEORETICAL_EMAIL_SUPPORT_THRESHOLD}"
+            "theoretical and frontier ideas remain in inbox for human review; "
+            "daily email contains runnable engineering experiments only"
         ),
     }
 

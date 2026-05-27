@@ -25,6 +25,10 @@ rich>=13.7               # 漂亮日志
 pytest>=8.0
 pytest-mock>=3.12
 
+# Mechanism evidence library / conference backfill
+openreview-py>=2.2
+numpy>=1.26
+sentence-transformers>=3.0
+
 # Optional (后续阶段)
-# sentence-transformers   # 若启用 embedding
 # tenacity                # 重试装饰器

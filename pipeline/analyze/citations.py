@@ -31,7 +31,9 @@ def snapshot_all_citations(*, limit: int | None = None,
     as_of = as_of or date.today()
     with db.connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM papers WHERE arxiv_id IS NOT NULL OR id IS NOT NULL"
+            f"""SELECT p.id FROM papers p
+                WHERE (p.arxiv_id IS NOT NULL OR p.id IS NOT NULL)
+                  AND {db.TRIGGER_ELIGIBILITY_GUARD}"""
         ).fetchall()
     all_ids = [r["id"] for r in rows]
     if limit:
@@ -63,7 +65,7 @@ def concept_velocity_map(side: str, recent_end: date,
 
     with db.connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT p.id, e.method_primary_json, e.domain_json, e.tags_json
             FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
@@ -71,6 +73,7 @@ def concept_velocity_map(side: str, recent_end: date,
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
               AND date(p.publication_date) <= ?
+              AND {db.TRIGGER_ELIGIBILITY_GUARD}
             """,
             (side, recent_start.isoformat(), recent_end.isoformat()),
         ).fetchall()

@@ -68,21 +68,88 @@ def persist_papers(papers: list[dict]) -> int:
     n_candidates = 0
     with db.connect() as conn:
         for p in papers:
-            db.upsert_paper(conn, p)
+            paper_id = _canonical_id_for_trigger(conn, p)
+            stored = {**p, "id": paper_id}
+            db.upsert_paper(conn, stored)
+            source_record_id = p.get("arxiv_id") or paper_id
+            db.upsert_paper_source(
+                conn,
+                paper_id=paper_id,
+                source=p["source"],
+                source_record_id=source_record_id,
+                role="trigger",
+                eligible_for_daily_trigger=1,
+                raw_meta=p.get("raw_meta", {}),
+            )
+            if p.get("arxiv_id"):
+                db.upsert_external_id(
+                    conn,
+                    source="arxiv",
+                    external_id=p["arxiv_id"],
+                    paper_id=paper_id,
+                )
             sig = compute_signals(p)
-            db.upsert_signals(conn, p["id"], sig.to_dict())
+            db.upsert_signals(conn, paper_id, sig.to_dict())
             if sig.is_candidate:
                 n_candidates += 1
     return n_candidates
 
 
-def extract_pending(*, max_l1: int = 100, max_l2: int = 30) -> dict:
+def _canonical_id_for_trigger(conn, paper: dict) -> str:
+    """Reuse an evidence-only canonical row when a later trigger observes it."""
+    arxiv_id = paper.get("arxiv_id")
+    if arxiv_id:
+        external_match = db.find_paper_by_external_id(conn, "arxiv", arxiv_id)
+        if external_match:
+            return external_match
+        direct = conn.execute(
+            "SELECT id FROM papers WHERE id = ? OR arxiv_id = ? LIMIT 1",
+            (paper["id"], arxiv_id),
+        ).fetchone()
+        if direct:
+            return direct["id"]
+
+    evidence_matches = conn.execute(
+        """
+        SELECT p.id
+        FROM papers p
+        WHERE lower(trim(p.title)) = lower(trim(?))
+          AND EXISTS (
+              SELECT 1 FROM paper_sources ps
+              WHERE ps.paper_id = p.id
+                AND ps.eligible_for_daily_trigger = 0
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM paper_sources ps
+              WHERE ps.paper_id = p.id
+                AND ps.eligible_for_daily_trigger = 1
+          )
+        """,
+        (paper["title"],),
+    ).fetchall()
+    if len(evidence_matches) == 1:
+        return evidence_matches[0]["id"]
+    return paper["id"]
+
+
+def extract_pending(
+    *,
+    max_l1: int = 100,
+    max_l2: int = 30,
+    include_evidence: bool = False,
+    evidence_only: bool = False,
+) -> dict:
     """Run L1 on pending candidates, then L2 on top by priority."""
     client = LLMClient()
     stats = {"l1_done": 0, "l1_failed": 0, "l2_done": 0, "l2_failed": 0}
 
     with db.connect() as conn:
-        pending = db.fetch_pending_for_l1(conn, limit=max_l1)
+        pending = db.fetch_pending_for_l1(
+            conn,
+            limit=max_l1,
+            include_evidence=include_evidence,
+            evidence_only=evidence_only,
+        )
         log.info("L1 candidates pending: %d (cap=%d)", len(pending), max_l1)
 
         for row in pending:
@@ -103,7 +170,13 @@ def extract_pending(*, max_l1: int = 100, max_l2: int = 30) -> dict:
         conn.commit()
 
         # L2 on high-priority subset
-        l2_pending = db.fetch_pending_for_l2(conn, L2_PRIORITY_THRESHOLD, limit=max_l2)
+        l2_pending = db.fetch_pending_for_l2(
+            conn,
+            L2_PRIORITY_THRESHOLD,
+            limit=max_l2,
+            include_evidence=include_evidence,
+            evidence_only=evidence_only,
+        )
         log.info("L2 candidates: %d (priority >= %.1f, cap=%d)",
                  len(l2_pending), L2_PRIORITY_THRESHOLD, max_l2)
 

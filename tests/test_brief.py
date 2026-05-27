@@ -64,7 +64,7 @@ def test_engineering_email_ready_gap_generates_deep_brief(monkeypatch, tmp_path:
     assert item["_brief_path"] == "2026-05-23-ENG-1.md"
 
 
-def test_deep_brief_uses_reasoning_model(monkeypatch):
+def test_deep_brief_uses_brief_model_tier(monkeypatch):
     class FakeClient:
         def __init__(self):
             self.kwargs = None
@@ -88,4 +88,5 @@ def test_deep_brief_uses_reasoning_model(monkeypatch):
 
     brief.generate_brief(item, {}, {}, [], client=client)
 
-    assert client.kwargs["reasoning"] is True
+    assert client.kwargs["brief"] is True
+    assert "reasoning" not in client.kwargs
