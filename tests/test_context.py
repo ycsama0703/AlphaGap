@@ -800,6 +800,10 @@ def test_engineering_gap_inherits_theoretical_audit_origin():
     theoretical = [{
         "_id": "TH-1",
         "opportunity_mode": "grounded_transfer",
+        "field_boundary_alignment": {
+            "field_id": "factor_investing",
+            "transfer_cell_id": "factor.executable_repair",
+        },
         "_origin": {"candidate_idx": 7, "audit_verdict": "revise"},
         "risk_audit": {"verdict": "revise"},
     }]
@@ -809,6 +813,40 @@ def test_engineering_gap_inherits_theoretical_audit_origin():
     assert gaps[0]["_origin"]["candidate_idx"] == 7
     assert gaps[0]["_origin"]["theoretical_gap_id"] == "TH-1"
     assert gaps[0]["risk_audit"]["verdict"] == "revise"
+    assert gaps[0]["field_boundary_alignment"]["transfer_cell_id"] == "factor.executable_repair"
+
+
+def test_theoretical_gap_inherits_missing_candidate_transfer_cell_id():
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            return {"gaps": [{
+                "source_candidate_idx": 3,
+                "hypothesis": "route-preserving theory",
+                "field_boundary_alignment": {"field_id": "factor_investing"},
+            }]}
+
+    ctx = {
+        "ai_recent_papers": [],
+        "fin_recent_papers": [],
+        "ai_trends": {},
+        "fin_trends": {},
+        "existing_mappings": [],
+        "fin_field_boundaries": [],
+        "fin_uptake": {},
+    }
+    candidates = [{
+        "idx": 3,
+        "opportunity_mode": "grounded_transfer",
+        "field_boundary_alignment": {
+            "field_id": "factor_investing",
+            "transfer_cell_id": "factor.executable_repair",
+        },
+    }]
+
+    gaps = gaps_mod.generate_theoretical_gaps(ctx, client=FakeClient(), candidates=candidates)
+
+    assert gaps[0]["field_boundary_alignment"]["field_id"] == "factor_investing"
+    assert gaps[0]["field_boundary_alignment"]["transfer_cell_id"] == "factor.executable_repair"
 
 
 def test_engineering_expansion_retries_theories_individually_after_batch_failure():

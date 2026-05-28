@@ -253,6 +253,7 @@ pipeline 调用前聚合：
         "mechanism_family": string,
         "open_bottleneck": string,
         "good_transfer_target": string,
+        "transfer_cell_id": string,
         "bad_target_avoided": string,
         "why_aligned": string
       },

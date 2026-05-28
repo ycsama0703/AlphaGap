@@ -523,13 +523,14 @@ def _candidate_routes(candidates: list[dict]) -> dict[str, dict]:
 
 def _ensure_field_alignment(gap: dict, candidate_alignments: dict[str, dict]) -> None:
     alignment = gap.get("field_boundary_alignment")
-    if isinstance(alignment, dict) and alignment.get("field_id"):
-        return
+    if not isinstance(alignment, dict):
+        alignment = {}
     source_idx = gap.get("source_candidate_idx") or gap.get("candidate_idx")
     if source_idx is not None and str(source_idx) in candidate_alignments:
-        gap["field_boundary_alignment"] = candidate_alignments[str(source_idx)]
+        inherited = candidate_alignments[str(source_idx)]
+        gap["field_boundary_alignment"] = {**inherited, **{k: v for k, v in alignment.items() if v}}
         return
-    gap.setdefault("field_boundary_alignment", {})
+    gap["field_boundary_alignment"] = alignment
 
 
 def _ensure_risk_audit(gap: dict, candidate_audits: dict[str, dict]) -> None:
@@ -568,6 +569,19 @@ def _inherit_theoretical_origin(engineering_gaps: list[dict],
         gap["_origin"] = origin
         if source.get("risk_audit"):
             gap["risk_audit"] = source["risk_audit"]
+        if source.get("opportunity_mode"):
+            gap.setdefault("opportunity_mode", source["opportunity_mode"])
+        if source.get("proposed_cell"):
+            gap.setdefault("proposed_cell", source["proposed_cell"])
+        source_alignment = source.get("field_boundary_alignment")
+        if isinstance(source_alignment, dict):
+            alignment = gap.get("field_boundary_alignment")
+            if not isinstance(alignment, dict):
+                alignment = {}
+            gap["field_boundary_alignment"] = {
+                **source_alignment,
+                **{k: v for k, v in alignment.items() if v},
+            }
 
 
 def _only_reviewed_theoretical_gaps(gaps: list[dict], candidates: list[dict]) -> list[dict]:

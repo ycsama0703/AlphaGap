@@ -240,6 +240,8 @@ Schema:
         "mechanism_family": string,
         "open_bottleneck": string,
         "good_transfer_target": string,
+        "transfer_cell_id": string,
+        "opportunity_mode": "grounded_transfer",
         "bad_target_avoided": string,
         "why_aligned": string
       },
