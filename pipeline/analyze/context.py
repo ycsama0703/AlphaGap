@@ -39,7 +39,7 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
                    s.priority_score, s.signals_json
             FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
-            JOIN paper_signals s ON s.paper_id = p.id
+            LEFT JOIN paper_signals s ON s.paper_id = p.id
             WHERE e.extraction_status IN ('l1_done', 'l2_done')
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
@@ -68,6 +68,76 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
     return out
 
 
+def get_relevant_historical_mechanisms(
+    end_date: date,
+    field_notes: list[dict],
+    transfer_cells: list[dict],
+    *,
+    exclude_ids: set[str] | None = None,
+    top_n: int = 18,
+    candidate_limit: int = 500,
+) -> list[dict]:
+    """Retrieve reusable AI mechanisms from the existing local paper library.
+
+    This is intentionally cheap and deterministic: no external scan and no LLM
+    call. It lets daily generation use accumulated mechanism memory without
+    re-processing thousands of papers.
+    """
+    exclude_ids = exclude_ids or set()
+    query_text = _historical_query_text(field_notes, transfer_cells)
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return []
+
+    with db.connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT p.id, p.title, p.abstract, p.publication_date, p.affiliations, p.url,
+                   p.arxiv_categories,
+                   e.side, e.method_primary_json, e.domain_json, e.tags_json,
+                   e.mechanism_description_json,
+                   e.building_blocks_json, e.claims_json, e.benchmarks_json,
+                   COALESCE(s.priority_score, 0) AS priority_score,
+                   COALESCE(s.signals_json, '{{}}') AS signals_json
+            FROM papers p
+            JOIN paper_extractions e ON e.paper_id = p.id
+            LEFT JOIN paper_signals s ON s.paper_id = p.id
+            WHERE e.extraction_status IN ('l1_done', 'l2_done')
+              AND (e.side = 'ai' OR e.side = 'both')
+              AND date(p.publication_date) <= ?
+            ORDER BY priority_score DESC, date(p.publication_date) DESC
+            LIMIT ?
+            """,
+            (end_date.isoformat(), candidate_limit),
+        ).fetchall()
+
+    scored: list[tuple[float, dict]] = []
+    for r in rows:
+        if r["id"] in exclude_ids:
+            continue
+        paper = _row_to_paper_dict(r)
+        text = _paper_retrieval_text(paper)
+        overlap = query_tokens & _tokenize(text)
+        phrase_hits = _phrase_hits(text, field_notes)
+        relevance = (
+            len(overlap)
+            + 2.0 * phrase_hits
+            + 0.25 * float(paper.get("priority_score") or 0.0)
+            + (0.5 if paper.get("building_blocks") else 0.0)
+        )
+        if relevance <= 0:
+            continue
+        prompt_item = historical_mechanism_for_prompt(
+            paper,
+            matched_keywords=sorted(overlap)[:10],
+            relevance_score=round(relevance, 2),
+        )
+        scored.append((relevance, prompt_item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:top_n]]
+
+
 def _normalize_mechanism(v: dict | None) -> dict:
     if not isinstance(v, dict):
         v = {}
@@ -77,6 +147,80 @@ def _normalize_mechanism(v: dict | None) -> dict:
         "contrast": (v.get("contrast") or "").strip(),
         "prerequisites": (v.get("prerequisites") or "").strip(),
     }
+
+
+def _row_to_paper_dict(row) -> dict:
+    d = dict(row)
+    for k in ("method_primary", "domain", "tags",
+              "building_blocks", "claims", "benchmarks"):
+        jk = k + "_json"
+        d[k] = json.loads(d.pop(jk) or "[]")
+    d["mechanism"] = _normalize_mechanism(
+        json.loads(d.pop("mechanism_description_json") or "{}")
+    )
+    d["signals"] = json.loads(d.pop("signals_json") or "{}")
+    d["abstract_short"] = (d.get("abstract") or "")[:600]
+    d["affiliation_top"] = (d.get("affiliations") or "").split(";")[0].strip()
+    return d
+
+
+def _historical_query_text(field_notes: list[dict], transfer_cells: list[dict]) -> str:
+    parts: list[str] = []
+    for note in field_notes or []:
+        parts.extend([
+            note.get("id") or "",
+            note.get("name") or "",
+            " ".join(note.get("related_keywords") or []),
+            " ".join(note.get("canonical_tasks") or []),
+            note.get("frontier") or "",
+            " ".join(note.get("good_transfer_targets") or []),
+            " ".join(note.get("bad_transfer_targets") or []),
+        ])
+        for family in note.get("mechanism_families") or []:
+            parts.extend([
+                family.get("name", ""),
+                family.get("mechanism", ""),
+                family.get("current_boundary", ""),
+                family.get("gap_relevance", ""),
+            ])
+        for bottleneck in note.get("open_bottlenecks") or []:
+            parts.extend([bottleneck.get("name", ""), bottleneck.get("description", "")])
+    for cell in transfer_cells or []:
+        parts.extend([
+            cell.get("cell_id", ""),
+            cell.get("field_id", ""),
+            cell.get("failure_mode", ""),
+            cell.get("ai_intervention_class", ""),
+            json.dumps(cell.get("experiment_anchor") or {}, ensure_ascii=False),
+        ])
+    return " ".join(parts).lower()
+
+
+def _paper_retrieval_text(paper: dict) -> str:
+    return " ".join([
+        paper.get("title", ""),
+        paper.get("abstract_short", ""),
+        " ".join(paper.get("method_primary") or []),
+        " ".join(paper.get("domain") or []),
+        " ".join(paper.get("tags") or []),
+        json.dumps(paper.get("mechanism") or {}, ensure_ascii=False),
+        json.dumps(paper.get("building_blocks") or [], ensure_ascii=False),
+    ]).lower()
+
+
+def _phrase_hits(text: str, field_notes: list[dict]) -> int:
+    hits = 0
+    for note in field_notes or []:
+        phrases = []
+        phrases.extend(note.get("related_keywords") or [])
+        phrases.extend(note.get("canonical_tasks") or [])
+        phrases.extend(f.get("name", "") for f in note.get("mechanism_families") or [])
+        phrases.extend(b.get("name", "") for b in note.get("open_bottlenecks") or [])
+        for phrase in phrases:
+            phrase = (phrase or "").lower().strip()
+            if len(phrase) >= 4 and phrase in text:
+                hits += 1
+    return hits
 
 
 # ---------- Mappings reader ----------
@@ -427,6 +571,29 @@ def paper_for_prompt(p: dict) -> dict:
         "claims": p.get("claims", []),
         "affiliation_top": p.get("affiliation_top") or "",
         "score": round(p.get("priority_score") or 0.0, 1),
+    }
+
+
+def historical_mechanism_for_prompt(
+    p: dict,
+    *,
+    matched_keywords: list[str] | None = None,
+    relevance_score: float | None = None,
+) -> dict:
+    """Compact historical AI mechanism memory for daily generation prompts."""
+    return {
+        "id": p["id"],
+        "title": p["title"],
+        "publication_date": str(p.get("publication_date") or ""),
+        "method_primary": p.get("method_primary", []),
+        "mechanism": _normalize_mechanism(p.get("mechanism")),
+        "domain": p.get("domain", []),
+        "tags": p.get("tags", []),
+        "building_blocks": (p.get("building_blocks") or [])[:5],
+        "claims": (p.get("claims") or [])[:3],
+        "score": round(p.get("priority_score") or 0.0, 1),
+        "matched_keywords": matched_keywords or [],
+        "retrieval_score": relevance_score,
     }
 
 

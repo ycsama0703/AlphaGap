@@ -110,6 +110,9 @@ def run_daily(target_date: date | None = None,
             "fin_fields_available": [
                 f.get("id") for f in gap_result["context"].get("fin_field_boundaries_all", [])
             ],
+            "historical_ai_mechanisms": len(
+                gap_result["context"].get("historical_ai_mechanisms", [])
+            ),
             "daily_mode": "experiment_first",
         },
         "top_papers": gap_result["context"]["ai_recent_papers"][:5] +

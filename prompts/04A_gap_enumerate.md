@@ -23,10 +23,10 @@
    - 尽量覆盖至少 2 个不同的 Fin 子领域（factor / portfolio / forecasting / regime / microstructure / 其他）
    - 同一 AI 概念 × 不同 Fin 应用算不同候选
    - 同一 Fin 应用 × 不同 AI 技术也算不同候选
-4. 每个候选必须 ground 在【输入 ai_recent_papers / fin_recent_papers / trends 中】实际存在的技术或场景
+4. 每个候选必须 ground 在【输入 ai_recent_papers / historical_ai_mechanisms / fin_recent_papers / trends 中】实际存在的技术或场景
 5. 不要重复 existing_mappings 已有的（除非状态是 refuted 且你有新角度）
 6. 利用 fin_uptake 字段：count=0 的 AI 概念优先（真 open gap）
-7. 必须优先使用 ai_recent_papers[*].mechanism / ai_trends 中的机制描述来构造候选；method_primary 只作论文证据，不作迁移概念本身
+7. 必须优先使用 ai_recent_papers[*].mechanism / historical_ai_mechanisms[*].mechanism / ai_trends 中的机制描述来构造候选；method_primary 只作论文证据，不作迁移概念本身
 8. candidate one_liner 禁止出现 AI 论文品牌方法名（如 FIPO / RecursiveMAS / CEPO / Reflexion）；必须写功能机制
 9. existing_mappings 是【人工确认过的正式知识资产】，不是草稿：
    - status="mature": 不要生成同方向候选
@@ -72,6 +72,10 @@
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
+
+【历史相关 AI 机制库检索结果（来自本地 SQLite，不是今天重扫；可作为 anchor）】
+{historical_ai_mechanisms_json}
+这些机制按当前 Fin field boundary / transfer cell 相关性取回。优先使用 `mechanism.one_liner / what_problem / contrast / prerequisites`，不要只抄方法品牌名。
 
 【近期 Fin 论文 top 10】
 {fin_recent_papers_json}

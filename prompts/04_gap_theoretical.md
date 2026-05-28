@@ -29,6 +29,7 @@ pipeline 调用前聚合：
     },
     ...   // top 20
   ],
+  "historical_ai_mechanisms": [...], // 本地历史机制库检索结果，可作为 AI anchor
   "fin_recent_papers": [...],   // top 10
   "ai_trends": {...},           // Prompt 03 输出
   "fin_trends": {...},
@@ -77,6 +78,7 @@ pipeline 调用前聚合：
 
 观察窗口（重要）：
 - 输入中 ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
+- historical_ai_mechanisms 来自本地历史机制库检索，用于补充已沉淀但仍可迁移的机制，不代表今天新发表
 - 输入中 fin_recent_papers / fin_trends 来自【过去 ~180 天】（金融发表节奏慢，需更长窗口）
 - 判定 "Fin 侧未涌现" / "open gap" 时，必须基于 6 个月的 Fin 论文池作为负面证据
 - 不要因为 "Fin 这周没出现 X" 就下结论；6 个月仍没出现才有意义
@@ -91,7 +93,7 @@ pipeline 调用前聚合：
 - 如果 fin_uptake 显示 explored 但你坚持是 gap，必须在 why_open_gap 解释为什么仍是 gap（如：角度不同 / 子领域不同）
 
 【机制层面 vs 品牌层面】（最重要的硬规则）：
-- ai_recent_papers 现在每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`
+- ai_recent_papers 与 historical_ai_mechanisms 现在每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`
 - ai_trends 是 mechanism families（每条带 representative_one_liner / shared_approach / contrast_to_prior）
 - 构造 gap 时，必须优先引用 `mechanism.one_liner` 和 `mechanism.what_problem`，不要从 `method_primary` 直接搬品牌名
 - `mechanism.contrast` 用来判断新机制相对 prior 的真实差异；如果 contrast 不清楚，不要强行生成 gap
@@ -130,7 +132,7 @@ pipeline 调用前聚合：
 1. 严格 JSON，无前后缀
 2. 每条 gap 必须包含：
    - hypothesis: 一句话假设（≤ 80 字）
-   - ai_anchor: 锚定的 AI 论文 ID（在输入 ai_recent_papers 中）+ AI 概念名
+   - ai_anchor: 锚定的 AI 论文 ID（在输入 ai_recent_papers 或 historical_ai_mechanisms 中）+ AI 概念名
    - fin_anchor: 锚定的 Fin 现状描述（可引用 fin_recent_papers 中的 ID，或描述"Fin 侧仍在用 X"）
    - structural_mapping: 结构匹配性分析（防止"漂亮但搬不过去"的 gap）
      * ai_data_structure: AI 方法所需的数据结构（如 "token sequence with hidden state evolution"）
@@ -208,6 +210,9 @@ pipeline 调用前聚合：
 
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
+
+【历史相关 AI 机制库检索结果（本地库，不是今天重扫；可作为 anchor）】
+{historical_ai_mechanisms_json}
 
 【近期 Fin 论文 top 10】
 {fin_recent_papers_json}

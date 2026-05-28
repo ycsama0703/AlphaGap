@@ -1,5 +1,6 @@
 from pipeline.analyze.context import (
     fin_field_for_prompt,
+    get_relevant_historical_mechanisms,
     load_ai_innovation_playbook,
     load_fin_field_notes,
     load_fin_transfer_cells,
@@ -10,6 +11,8 @@ from pipeline.analyze.context import (
     select_fin_transfer_cells,
 )
 from pipeline.analyze import gaps as gaps_mod
+from pipeline import db
+from datetime import date
 
 
 def test_paper_for_prompt_includes_normalized_mechanism():
@@ -262,6 +265,116 @@ def test_select_fin_field_notes_falls_back_to_original_order_when_no_match():
     assert [n["id"] for n in selected] == ["f0", "f1"]
 
 
+def test_relevant_historical_mechanisms_uses_local_library(monkeypatch, tmp_path):
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    monkeypatch.setenv("RESEND_API_KEY", "test")
+    monkeypatch.setenv("EMAIL_FROM", "test@example.com")
+    monkeypatch.setenv("EMAIL_TO", "test@example.com")
+    monkeypatch.setenv("ALPHAGAP_DB_PATH", str(tmp_path / "test.sqlite"))
+    db.init_schema()
+
+    with db.connect() as conn:
+        db.upsert_paper(conn, {
+            "id": "2605.10001",
+            "source": "hf_daily",
+            "arxiv_id": "2605.10001",
+            "title": "Verifier feedback repairs invalid generated programs",
+            "abstract": "A verifier-guided repair loop catches execution failures.",
+            "authors": [],
+            "publication_date": date(2026, 5, 1),
+            "arxiv_categories": ["cs.LG"],
+            "url": "https://arxiv.org/abs/2605.10001",
+            "raw_meta": {},
+        })
+        db.upsert_paper_source(
+            conn,
+            paper_id="2605.10001",
+            source="hf_daily",
+            source_record_id="2605.10001",
+            role="trigger",
+            eligible_for_daily_trigger=1,
+        )
+        db.upsert_signals(conn, "2605.10001", {
+            "priority_score": 9,
+            "is_hf_daily": True,
+        })
+        db.upsert_extraction_l1(conn, "2605.10001", {
+            "side": "ai",
+            "method_primary": ["Program Verifier"],
+            "domain": ["program repair"],
+            "tags": ["verifier", "repair loop"],
+            "mechanism_description": {
+                "one_liner": "用验证器反馈循环修复不可执行候选",
+                "what_problem": "生成器容易输出语法正确但执行失败的程序",
+                "contrast": "比只看最终答案更早定位错误",
+                "prerequisites": "存在可执行检查器",
+            },
+        })
+        db.upsert_paper(conn, {
+            "id": "openreview:repair",
+            "source": "openreview",
+            "arxiv_id": None,
+            "title": "Verifier evidence for repair loops",
+            "abstract": "Evidence-only conference paper about verifier repair.",
+            "authors": [],
+            "publication_date": date(2026, 4, 1),
+            "arxiv_categories": [],
+            "url": "https://openreview.net/forum?id=repair",
+            "raw_meta": {},
+        })
+        db.upsert_paper_source(
+            conn,
+            paper_id="openreview:repair",
+            source="openreview",
+            source_record_id="repair",
+            role="evidence",
+            eligible_for_daily_trigger=0,
+        )
+        db.upsert_extraction_l1(conn, "openreview:repair", {
+            "side": "ai",
+            "method_primary": ["Verifier Repair"],
+            "domain": ["program repair"],
+            "tags": ["repair loop"],
+            "mechanism_description": {
+                "one_liner": "用验证器反馈支持修复循环",
+                "what_problem": "执行失败需要外部检查信号",
+                "contrast": "evidence-only mechanism memory",
+                "prerequisites": "checker signal",
+            },
+        })
+
+    fields = [{
+        "id": "factor_investing",
+        "name": "Factor Investing",
+        "related_keywords": ["factor investing"],
+        "canonical_tasks": ["formulaic alpha search"],
+        "mechanism_families": [{"name": "Formulaic Alpha Search"}],
+        "good_transfer_targets": ["verifier-guided repair loops"],
+        "open_bottlenecks": [{"name": "executable factor validity", "description": ""}],
+    }]
+    cells = [{
+        "cell_id": "factor.executable_repair",
+        "field_id": "factor_investing",
+        "failure_mode": "invalid factor formulas",
+        "ai_intervention_class": "verifier-guided repair loop",
+        "experiment_anchor": {"primary_metric": "repair success"},
+    }]
+
+    results = get_relevant_historical_mechanisms(
+        date(2026, 5, 28), fields, cells, top_n=5,
+    )
+
+    assert results[0]["id"] == "2605.10001"
+    assert "验证器反馈循环" in results[0]["mechanism"]["one_liner"]
+    assert "repair" in results[0]["matched_keywords"]
+
+    excluded = get_relevant_historical_mechanisms(
+        date(2026, 5, 28), fields, cells, exclude_ids={"2605.10001"}, top_n=5,
+    )
+    assert excluded[0]["id"] == "openreview:repair"
+
+
 def test_build_gap_context_uses_selected_fin_fields(monkeypatch):
     def fake_papers(side, end, *, top_n, window_days):
         if side == "fin":
@@ -321,6 +434,11 @@ def test_build_gap_context_uses_selected_fin_fields(monkeypatch):
         {"cell_id": "factor.search", "field_id": "factor_investing"},
     ])
     monkeypatch.setattr(
+        gaps_mod.ctx_builder,
+        "get_relevant_historical_mechanisms",
+        lambda *args, **kwargs: [{"id": "hist1", "mechanism": {"one_liner": "history"}}],
+    )
+    monkeypatch.setattr(
         gaps_mod.trends_mod,
         "summarize_trends",
         lambda *args, **kwargs: (_ for _ in ()).throw(
@@ -338,6 +456,8 @@ def test_build_gap_context_uses_selected_fin_fields(monkeypatch):
     assert {c["cell_id"] for c in ctx["fin_transfer_cells"]} == {
         "nlp.retrieval", "factor.search",
     }
+    assert ctx["historical_ai_mechanisms"][0]["id"] == "hist1"
+    assert "hist1" in ctx["_valid_ai_ids"]
     assert "Runtime Prompt Digest" in ctx["ai_innovation_playbook"]
     assert ctx["trends_included"] is False
     assert ctx["ai_trends"] == {

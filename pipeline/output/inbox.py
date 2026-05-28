@@ -36,6 +36,7 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         _section_gaps_email(payload),
         _section_suppressed_duplicates(payload),
         _section_gaps_all(payload),
+        _section_self_check_ledger(payload),
         _section_trends(payload),
         _section_top_papers(payload),
         _section_mapping_drafts(payload),
@@ -76,6 +77,7 @@ def _section_stats(p: dict) -> str:
         f"- L1 extracted: {s.get('l1_done', '?')} | L2 extracted: {s.get('l2_done', '?')}\n"
         f"- Hypotheses screened: {len(p.get('theoretical', []))} | Experiments designed: {len(p.get('engineering', []))}\n"
         f"- Accepted for record: {len(p.get('accepted', []))} | Runnable experiments emailed: {len(p.get('email_ready', []))}\n"
+        f"- Historical AI mechanisms retrieved: {s.get('historical_ai_mechanisms', 0)}\n"
         f"{suppressed_line}"
         f"- Daily mode: experiment-first; citation/trend/mapping maintenance off critical path\n"
         f"{field_line}\n"
@@ -126,6 +128,7 @@ def _audit_outcome(p: dict, candidate_idx: object) -> str:
     for state, items in [
         ("accepted", p.get("accepted", [])),
         ("rejected", p.get("rejected", [])),
+        ("downgraded", p.get("downgraded", [])),
     ]:
         for item in items:
             gap = item.get("gap") or {}
@@ -138,6 +141,92 @@ def _audit_outcome(p: dict, candidate_idx: object) -> str:
     if statuses:
         return "; ".join(statuses)
     return "not expanded or not selected for refinement"
+
+
+def _section_self_check_ledger(p: dict) -> str:
+    """Explain why generated gaps failed before scoring/email."""
+    rows: list[str] = []
+    for state, items in [
+        ("rejected", p.get("rejected", [])),
+        ("downgraded", p.get("downgraded", [])),
+    ]:
+        for item in items:
+            rows.append(_self_check_item_markdown(state, item))
+    if not rows:
+        return ""
+    return "\n".join([
+        "## Rejected / Downgraded Self-check Ledger",
+        "",
+        "These items were generated but did not enter the accepted scoring pool. "
+        "Use this section to diagnose whether Prompt 04/05 is underspecified or "
+        "Prompt 06 is too strict.",
+        "",
+        *rows,
+    ])
+
+
+def _self_check_item_markdown(state: str, item: dict) -> str:
+    gap = item.get("gap") or {}
+    check = item.get("check") or {}
+    lines = [
+        f"### {_gap_label(gap, item.get('type'))} — {state}",
+        "",
+        f"- Hypothesis: {gap.get('hypothesis', '?')}",
+        f"- Verdict: `{check.get('overall_verdict', 'unknown')}` — {check.get('verdict_summary', '')}",
+    ]
+    if item.get("score_error"):
+        lines.append(f"- Scoring error: {item['score_error']}")
+    if item.get("error"):
+        lines.append(f"- Error: {item['error']}")
+    origin = gap.get("_origin") or {}
+    if origin.get("candidate_idx") is not None:
+        lines.append(
+            f"- Origin: candidate {origin.get('candidate_idx')} "
+            f"({origin.get('audit_verdict') or 'standard'})"
+        )
+    failed = _failed_checks(check)
+    if failed:
+        lines.extend(["", "| Failed check | Reason |", "|---|---|"])
+        for name, reason in failed:
+            lines.append(f"| `{name}` | {_table_text(reason)} |")
+    else:
+        lines.append("- Failed checks: none reported")
+
+    recheck = item.get("recheck")
+    if recheck:
+        lines.append("")
+        lines.append(
+            f"- Downgrade recheck: `{recheck.get('overall_verdict', 'unknown')}` "
+            f"— {recheck.get('verdict_summary', '')}"
+        )
+        failed_recheck = _failed_checks(recheck)
+        if failed_recheck:
+            lines.extend(["", "| Recheck failed check | Reason |", "|---|---|"])
+            for name, reason in failed_recheck:
+                lines.append(f"| `{name}` | {_table_text(reason)} |")
+    return "\n".join(lines)
+
+
+def _gap_label(gap: dict, gap_type: str | None) -> str:
+    gid = gap.get("_id", "?")
+    return f"[{gid}] ({gap_type or gap.get('_type') or '?'})"
+
+
+def _failed_checks(check: dict) -> list[tuple[str, str]]:
+    checks = check.get("checks") if isinstance(check, dict) else {}
+    if not isinstance(checks, dict):
+        return []
+    failed = []
+    for name, result in checks.items():
+        if not isinstance(result, dict):
+            continue
+        if result.get("pass") is False:
+            failed.append((name, result.get("reason") or "failed"))
+    return failed
+
+
+def _table_text(value: object) -> str:
+    return str(value or "").replace("|", "\\|").replace("\n", " ").strip()
 
 
 def _section_top_papers(p: dict) -> str:

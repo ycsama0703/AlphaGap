@@ -314,3 +314,63 @@ def test_inbox_reports_adversarial_risk_audit(tmp_path: Path):
     assert "Candidate 2 — REJECT" in text
     assert "boundary, mechanism_transfer" in text
     assert "falls into an unconstrained trading target" in text
+
+
+def test_inbox_reports_rejected_self_check_reasons(tmp_path: Path):
+    rejected = {
+        "type": "engineering",
+        "gap": {"_id": "ENG-1", "hypothesis": "用验证器修复因子公式"},
+        "check": {
+            "overall_verdict": "reject",
+            "verdict_summary": "roadmap 不完整",
+            "checks": {
+                "F_data_concrete": {"pass": False, "reason": "dataset split missing"},
+                "I_baselines_sufficient": {"pass": False, "reason": "only one baseline"},
+                "G_method_detail": {"pass": True, "reason": ""},
+            },
+        },
+    }
+    downgraded = {
+        "type": "engineering",
+        "gap": {"_id": "ENG-2", "hypothesis": "用检索停止规则改进金融 RAG"},
+        "check": {
+            "overall_verdict": "downgrade",
+            "verdict_summary": "缺最小实验",
+            "checks": {
+                "Q_first_experiment_go_no_go": {
+                    "pass": False,
+                    "reason": "stop criterion missing",
+                },
+            },
+        },
+        "recheck": {
+            "overall_verdict": "reject",
+            "verdict_summary": "理论证据不足",
+            "checks": {
+                "E_evidence_for_gap": {"pass": False, "reason": "weak fin evidence"},
+            },
+        },
+    }
+    payload = {
+        "stats": {"cost_usd": 0.0, "historical_ai_mechanisms": 12},
+        "theoretical": [],
+        "engineering": [],
+        "accepted": [],
+        "rejected": [rejected],
+        "downgraded": [downgraded],
+        "email_ready": [],
+        "mapping_actions": [],
+        "mapping_drafts": [],
+    }
+
+    path = write_daily_inbox(date(2026, 5, 28), payload, out_dir=tmp_path)
+    text = path.read_text()
+
+    assert "Historical AI mechanisms retrieved: 12" in text
+    assert "Rejected / Downgraded Self-check Ledger" in text
+    assert "[ENG-1] (engineering) — rejected" in text
+    assert "`F_data_concrete` | dataset split missing" in text
+    assert "`I_baselines_sufficient` | only one baseline" in text
+    assert "[ENG-2] (engineering) — downgraded" in text
+    assert "Downgrade recheck: `reject`" in text
+    assert "`E_evidence_for_gap` | weak fin evidence" in text

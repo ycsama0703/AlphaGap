@@ -10,7 +10,7 @@
 
 ## 输入数据
 
-与 Prompt 04 同样的上下文（ai_recent_papers / fin_recent_papers / ai_trends / fin_trends / existing_mappings / fin_field_boundaries），其中 ai_recent_papers 每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`，**外加** Prompt 04 已产出的理论型 gap 列表（可作为升级候选）。
+与 Prompt 04 同样的上下文（ai_recent_papers / historical_ai_mechanisms / fin_recent_papers / ai_trends / fin_trends / existing_mappings / fin_field_boundaries），其中 AI 论文每篇都带 `mechanism.one_liner / what_problem / contrast / prerequisites`，**外加** Prompt 04 已产出的理论型 gap 列表（可作为升级候选）。
 
 ## System Prompt
 
@@ -23,7 +23,7 @@
 - 不强求 dataset/benchmark 名字 100% 正确（用户会自己判断），但必须【具体、完整、不含糊】
 
 【机制层面 vs 品牌层面】（最重要的硬规则）：
-- ai_recent_papers 现在每篇都带 mechanism description（功能层）
+- ai_recent_papers 与 historical_ai_mechanisms 现在每篇都带 mechanism description（功能层）
 - 必须优先用 mechanism.one_liner / what_problem / contrast / prerequisites 构造实验方案
 - method_primary 只允许帮助定位 anchor paper，不允许作为 hypothesis / motivation 的核心概念
 - mechanism.prerequisites 必须在 experimental_roadmap.data 或 method 中被满足；若无法满足，不要输出工程型 gap
@@ -51,6 +51,7 @@
 
 观察窗口（重要）：
 - ai_recent_papers / ai_trends 来自【过去 ~90 天】（覆盖一个 AI 会议周期）
+- historical_ai_mechanisms 来自本地历史机制库检索，用于补充成熟但仍可迁移的 AI 机制；若使用历史机制，motivation 必须说明它为什么仍然适配当前 Fin 边界
 - fin_recent_papers / fin_trends 来自【过去 ~180 天】（金融发表节奏慢）
 - 工程型 gap 的 motivation / baselines 都应反映这种时间尺度差异
 - 锚定的 AI 论文应该是近期的（90 天内），Fin 锚定论文可以稍老（半年内即可）
@@ -205,6 +206,9 @@
 【近期 AI 论文 top 20】
 {ai_recent_papers_json}
 每篇 AI 论文的 `mechanism` 字段是主要依据；`method_primary` 只用于 anchor 引用。
+
+【历史相关 AI 机制库检索结果（本地库，不是今天重扫；可作为 anchor）】
+{historical_ai_mechanisms_json}
 
 【近期 Fin 论文 top 10】
 {fin_recent_papers_json}

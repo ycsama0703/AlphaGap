@@ -80,6 +80,13 @@ def build_gap_context(end_date: date | None = None,
         all_fin_transfer_cells,
         fin_field_boundaries,
     )
+    historical_ai_mechanisms = ctx_builder.get_relevant_historical_mechanisms(
+        end,
+        fin_field_boundaries,
+        fin_transfer_cells,
+        exclude_ids={p["id"] for p in ai_papers},
+        top_n=18,
+    )
 
     # Tier 1.1: quantified Fin-side uptake for AI concepts (algorithmic, not LLM)
     ai_concepts_to_check = uptake_mod.extract_ai_concepts_for_uptake(
@@ -96,6 +103,7 @@ def build_gap_context(end_date: date | None = None,
         "window_ai_days": wd_ai,
         "window_fin_days": wd_fin,
         "ai_recent_papers": [ctx_builder.paper_for_prompt(p) for p in ai_papers],
+        "historical_ai_mechanisms": historical_ai_mechanisms,
         "fin_recent_papers": [ctx_builder.paper_for_prompt(p) for p in fin_papers],
         "ai_trends": _strip_meta(ai_trends),
         "fin_trends": _strip_meta(fin_trends),
@@ -108,7 +116,9 @@ def build_gap_context(end_date: date | None = None,
         "trends_included": include_trends,
         "fin_uptake": fin_uptake,    # ← Tier 1.1: hard negative-evidence ground truth
         # raw refs for downstream validation
-        "_valid_ai_ids": {p["id"] for p in ai_papers},
+        "_valid_ai_ids": {p["id"] for p in ai_papers} | {
+            p["id"] for p in historical_ai_mechanisms
+        },
         "_valid_fin_ids": {p["id"] for p in fin_papers},
         "_mappings_brief": [ctx_builder.mapping_brief(m) for m in mappings],
         "_valid_transfer_cell_ids": {cell["cell_id"] for cell in fin_transfer_cells},
@@ -136,6 +146,8 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
     user = render_template(
         user_template,
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
+        historical_ai_mechanisms_json=json.dumps(
+            context.get("historical_ai_mechanisms", []), ensure_ascii=False, indent=2),
         fin_recent_papers_json=json.dumps(context["fin_recent_papers"], ensure_ascii=False, indent=2),
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
@@ -246,6 +258,8 @@ def generate_theoretical_gaps(context: dict, client: LLMClient | None = None,
     system, user_template = parse_prompt("04_gap_theoretical")
     user_kwargs = dict(
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
+        historical_ai_mechanisms_json=json.dumps(
+            context.get("historical_ai_mechanisms", []), ensure_ascii=False, indent=2),
         fin_recent_papers_json=json.dumps(context["fin_recent_papers"], ensure_ascii=False, indent=2),
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
@@ -346,6 +360,8 @@ def generate_engineering_gaps(context: dict, theoretical_gaps: list[dict],
     system, user_template = parse_prompt("05_gap_engineering")
     user_kwargs = dict(
         ai_recent_papers_json=json.dumps(context["ai_recent_papers"], ensure_ascii=False, indent=2),
+        historical_ai_mechanisms_json=json.dumps(
+            context.get("historical_ai_mechanisms", []), ensure_ascii=False, indent=2),
         fin_recent_papers_json=json.dumps(context["fin_recent_papers"], ensure_ascii=False, indent=2),
         ai_trends_json=json.dumps(context["ai_trends"], ensure_ascii=False, indent=2),
         fin_trends_json=json.dumps(context["fin_trends"], ensure_ascii=False, indent=2),
@@ -741,7 +757,9 @@ def run_gap_pipeline(end_date: date | None = None,
     valid_ai = ctx["_valid_ai_ids"]
     valid_fin = ctx["_valid_fin_ids"]
     mappings_brief = ctx["_mappings_brief"]
-    ai_method_names = _ai_method_names(ctx["ai_recent_papers"])
+    ai_method_names = _ai_method_names(
+        ctx["ai_recent_papers"] + ctx.get("historical_ai_mechanisms", [])
+    )
 
     for gap, gtype in all_gaps:
         try:
