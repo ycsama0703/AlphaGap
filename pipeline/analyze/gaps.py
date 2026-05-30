@@ -29,6 +29,7 @@ MAX_THEORETICAL_GAPS = 4
 THEORETICAL_EXPANSION_MAX_TOKENS = 16384
 MAX_ENGINEERING_GAPS = 2
 ENGINEERING_EXPANSION_MAX_TOKENS = 32768
+ENGINEERING_REPAIR_MAX_TOKENS = 32768
 MAX_FRONTIER_CANDIDATES_SELECTED = 1
 GROUNDED_TRANSFER = "grounded_transfer"
 FRONTIER_EXTENSION = "frontier_extension"
@@ -462,6 +463,122 @@ def _request_engineering_gaps(*, system: str, user_template: str, user_kwargs: d
     return result.get("gaps", []) if isinstance(result, dict) else []
 
 
+def repair_engineering_gap(gap: dict, check: dict, context: dict,
+                           client: LLMClient | None = None) -> dict | None:
+    """Repair an engineering gap whose roadmap drifted away from its transfer cell.
+
+    This is intentionally narrow: it never fixes invalid anchors, duplicates, or
+    brand-name errors. It only gives Prompt 05B one chance to re-lock data,
+    metrics, baselines, ablations, and empirical controls to the selected cell.
+    """
+    cell = _selected_transfer_cell(gap, context.get("fin_transfer_cells", []))
+    if not cell:
+        return None
+    client = client or LLMClient()
+    system, user_template = parse_prompt("05B_gap_engineering_repair")
+    field = _selected_field_boundary(gap, context.get("fin_field_boundaries", []))
+    user = render_template(
+        user_template,
+        gap_json=json.dumps(gap, ensure_ascii=False, indent=2),
+        self_check_json=json.dumps(check, ensure_ascii=False, indent=2),
+        transfer_cell_json=json.dumps(cell, ensure_ascii=False, indent=2),
+        fin_field_boundary_json=json.dumps(field or {}, ensure_ascii=False, indent=2),
+    )
+    result = client.chat_json(
+        system=system,
+        user=user,
+        temperature=0.2,
+        reasoning=True,
+        max_tokens=ENGINEERING_REPAIR_MAX_TOKENS,
+    )
+    repaired = result.get("gap") if isinstance(result, dict) else None
+    if not isinstance(repaired, dict):
+        return None
+    repaired = _preserve_gap_metadata(gap, repaired)
+    repaired["_repair"] = {
+        "source": "05B_gap_engineering_repair",
+        "original_verdict": check.get("overall_verdict", ""),
+        "original_summary": check.get("verdict_summary", ""),
+        "transfer_cell_id": cell.get("cell_id", ""),
+    }
+    return repaired
+
+
+def _preserve_gap_metadata(original: dict, repaired: dict) -> dict:
+    keep_keys = (
+        "_id", "_type", "_origin", "risk_audit", "opportunity_mode",
+        "upgraded_from_theoretical", "proposed_cell",
+    )
+    out = dict(repaired)
+    for key in keep_keys:
+        if original.get(key) is not None:
+            out[key] = original[key]
+    original_alignment = original.get("field_boundary_alignment")
+    repaired_alignment = out.get("field_boundary_alignment")
+    if isinstance(original_alignment, dict):
+        if not isinstance(repaired_alignment, dict):
+            repaired_alignment = {}
+        out["field_boundary_alignment"] = {
+            **original_alignment,
+            **{k: v for k, v in repaired_alignment.items() if v},
+        }
+    return out
+
+
+def _selected_transfer_cell(gap: dict, cells: list[dict]) -> dict | None:
+    alignment = gap.get("field_boundary_alignment") or {}
+    if not isinstance(alignment, dict):
+        return None
+    cell_id = alignment.get("transfer_cell_id")
+    if not cell_id:
+        return None
+    return next((cell for cell in cells if cell.get("cell_id") == cell_id), None)
+
+
+def _selected_field_boundary(gap: dict, boundaries: list[dict]) -> dict | None:
+    alignment = gap.get("field_boundary_alignment") or {}
+    if not isinstance(alignment, dict):
+        return None
+    field_id = alignment.get("field_id")
+    if not field_id:
+        return None
+    return next((field for field in boundaries if field.get("id") == field_id), None)
+
+
+def _should_repair_engineering_gap(gap_type: str, check: dict) -> bool:
+    if gap_type != "engineering":
+        return False
+    verdict = check.get("overall_verdict")
+    if verdict not in {"reject", "downgrade", "retry"}:
+        return False
+    failed = _failed_check_keys(check)
+    if failed & {"A_anchor_validity", "B_duplication", "M_no_brand_in_hypothesis"}:
+        return False
+    repairable = {
+        "O_field_boundary_alignment",
+        "F_data_concrete",
+        "G_method_detail",
+        "H_metrics_quantitative",
+        "I_baselines_sufficient",
+        "J_ablations_present",
+        "K_no_TBD",
+        "P_empirical_validity_risk",
+        "Q_first_experiment_go_no_go",
+    }
+    return bool(failed & repairable)
+
+
+def _failed_check_keys(check: dict) -> set[str]:
+    checks = check.get("checks")
+    if not isinstance(checks, dict):
+        return set()
+    failed: set[str] = set()
+    for key, value in checks.items():
+        if isinstance(value, dict) and value.get("pass") is False:
+            failed.add(key)
+    return failed
+
+
 def _candidate_alignments(candidates: list[dict]) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for c in candidates:
@@ -795,6 +912,43 @@ def run_gap_pipeline(end_date: date | None = None,
             continue
         verdict = check["overall_verdict"]
 
+        repair_attempt: dict | None = None
+        if _should_repair_engineering_gap(gtype, check):
+            try:
+                repaired = repair_engineering_gap(gap, check, ctx, client=client)
+            except Exception as e:
+                log.warning("Engineering repair failed for gap %s: %s", gap.get("_id", "?"), e)
+                repaired = None
+                repair_attempt = {"error": str(e)}
+            if repaired:
+                try:
+                    repaired_check = sc_mod.check_gap(
+                        repaired,
+                        gtype,
+                        valid_ai,
+                        valid_fin,
+                        mappings_brief,
+                        fin_field_boundaries=ctx.get("fin_field_boundaries", []),
+                        fin_transfer_cells=ctx.get("fin_transfer_cells", []),
+                        ai_method_names=ai_method_names,
+                        client=client,
+                    )
+                except Exception as e:
+                    log.warning("Self-check failed for repaired gap %s: %s", gap.get("_id", "?"), e)
+                    repaired_check = {"overall_verdict": "error", "error": str(e)}
+                repair_attempt = {"gap": repaired, "check": repaired_check}
+                if repaired_check.get("overall_verdict") == "accept":
+                    gap = repaired
+                    check = repaired_check
+                    verdict = "accept"
+                    log.info("Engineering repair accepted gap %s", gap.get("_id", "?"))
+                else:
+                    log.info(
+                        "Engineering repair did not pass gap %s: %s",
+                        gap.get("_id", "?"),
+                        repaired_check.get("overall_verdict"),
+                    )
+
         if verdict == "accept":
             try:
                 score = scoring_mod.score_gap(gap, gtype, mappings_brief, client=client)
@@ -803,9 +957,15 @@ def run_gap_pipeline(end_date: date | None = None,
                 rejected.append({"gap": gap, "type": gtype, "check": check,
                                  "score_error": str(e)})
                 continue
-            accepted.append({"gap": gap, "type": gtype, "check": check, "score": score})
+            item = {"gap": gap, "type": gtype, "check": check, "score": score}
+            if repair_attempt:
+                item["repair"] = repair_attempt
+            accepted.append(item)
         elif verdict == "reject":
-            rejected.append({"gap": gap, "type": gtype, "check": check})
+            item = {"gap": gap, "type": gtype, "check": check}
+            if repair_attempt:
+                item["repair"] = repair_attempt
+            rejected.append(item)
         elif verdict == "downgrade" and gtype == "engineering":
             tg = sc_mod.downgrade_to_theoretical(gap)
             try:
@@ -817,7 +977,10 @@ def run_gap_pipeline(end_date: date | None = None,
                                              client=client)
             except Exception as e:
                 log.warning("Re-check failed for downgraded gap %s: %s", gap.get("_id", "?"), e)
-                downgraded.append({"gap": gap, "type": gtype, "check": check, "error": str(e)})
+                item = {"gap": gap, "type": gtype, "check": check, "error": str(e)}
+                if repair_attempt:
+                    item["repair"] = repair_attempt
+                downgraded.append(item)
                 continue
             if re_check["overall_verdict"] == "accept":
                 try:
@@ -829,10 +992,15 @@ def run_gap_pipeline(end_date: date | None = None,
                                 "check": re_check, "score": score,
                                 "_downgraded_from": gap.get("_id")})
             else:
-                downgraded.append({"gap": gap, "type": gtype, "check": check,
-                                   "recheck": re_check})
+                item = {"gap": gap, "type": gtype, "check": check, "recheck": re_check}
+                if repair_attempt:
+                    item["repair"] = repair_attempt
+                downgraded.append(item)
         else:
-            rejected.append({"gap": gap, "type": gtype, "check": check})
+            item = {"gap": gap, "type": gtype, "check": check}
+            if repair_attempt:
+                item["repair"] = repair_attempt
+            rejected.append(item)
 
     email_ready = select_email_experiments(accepted)
     duplicates_suppressed: list[dict] = []

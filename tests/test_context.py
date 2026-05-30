@@ -943,3 +943,89 @@ def test_frontier_extension_does_not_expand_into_engineering_gap():
     )
 
     assert gaps == []
+
+
+def test_engineering_repair_preserves_route_and_uses_selected_transfer_cell():
+    calls = []
+
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            calls.append(kwargs)
+            return {"gap": {
+                "hypothesis": "repaired experiment",
+                "field_boundary_alignment": {
+                    "field_id": "factor_investing",
+                    "mechanism_family": "Formulaic Alpha Search",
+                },
+                "experimental_roadmap": {
+                    "data": {"sources": ["CRSP"], "sample": "US equities"},
+                    "metrics": {"primary": [{"name": "repair success rate"}]},
+                    "baselines": [{"name": "rule-based syntax repair"}],
+                },
+            }}
+
+    gap = {
+        "_id": "ENG-1",
+        "_type": "engineering",
+        "opportunity_mode": "grounded_transfer",
+        "_origin": {"candidate_idx": 1},
+        "field_boundary_alignment": {
+            "field_id": "factor_investing",
+            "transfer_cell_id": "factor.executable_repair",
+            "bad_target_avoided": "narrative factor ideas",
+        },
+    }
+    check = {
+        "overall_verdict": "reject",
+        "verdict_summary": "O fail",
+        "checks": {
+            "O_field_boundary_alignment": {
+                "pass": False,
+                "reason": "data/metrics mismatch",
+            }
+        },
+    }
+    ctx = {
+        "fin_transfer_cells": [{
+            "cell_id": "factor.executable_repair",
+            "field_id": "factor_investing",
+            "mechanism_family": "Formulaic Alpha Search",
+            "experiment_anchor": {
+                "data_object": "symbolic alpha expressions",
+                "primary_metric": "valid expression rate",
+                "baseline": "rule-based syntax repair",
+                "failure_mode": "timing violations",
+            },
+        }],
+        "fin_field_boundaries": [{"id": "factor_investing"}],
+    }
+
+    repaired = gaps_mod.repair_engineering_gap(gap, check, ctx, client=FakeClient())
+
+    assert repaired["_id"] == "ENG-1"
+    assert repaired["_origin"]["candidate_idx"] == 1
+    assert repaired["field_boundary_alignment"]["transfer_cell_id"] == "factor.executable_repair"
+    assert repaired["field_boundary_alignment"]["bad_target_avoided"] == "narrative factor ideas"
+    assert repaired["_repair"]["transfer_cell_id"] == "factor.executable_repair"
+    assert calls[0]["reasoning"] is True
+    assert calls[0]["max_tokens"] == gaps_mod.ENGINEERING_REPAIR_MAX_TOKENS
+    assert "symbolic alpha expressions" in calls[0]["user"]
+
+
+def test_engineering_repair_gate_ignores_fatal_anchor_and_duplicate_failures():
+    assert gaps_mod._should_repair_engineering_gap("theoretical", {
+        "overall_verdict": "reject",
+        "checks": {"O_field_boundary_alignment": {"pass": False}},
+    }) is False
+    assert gaps_mod._should_repair_engineering_gap("engineering", {
+        "overall_verdict": "reject",
+        "checks": {"A_anchor_validity": {"pass": False}},
+    }) is False
+    assert gaps_mod._should_repair_engineering_gap("engineering", {
+        "overall_verdict": "reject",
+        "checks": {"B_duplication": {"pass": False}},
+    }) is False
+    assert gaps_mod._should_repair_engineering_gap("engineering", {
+        "overall_verdict": "downgrade",
+        "checks": {"Q_first_experiment_go_no_go": {"pass": False}},
+    }) is True

@@ -47,6 +47,12 @@
 - 如果实验落入 bad_transfer_targets（如无约束 LLM trading），默认不要输出；除非 roadmap 明确加入 point-in-time、cost、risk、constraint、audit 等机制来绕开失败原因
 - benchmark / paper 名字只能作为 evidence 或 baseline，不允许作为实验方案的核心组织概念
 - fin_transfer_cells 是人工维护的正式实验单元。工程型 gap 只可升级 `opportunity_mode="grounded_transfer"` 的理论 gap，必须选择一个 active cell，并将 roadmap 的 data、metrics、baselines 与 failure mode 落在该 cell 的 experiment_anchor 上。
+- 【experiment_anchor lock】一旦选择 `transfer_cell_id`，必须把对应 cell 的 `experiment_anchor` 当作实验设计合同：
+  - `data` 必须直接服务于 `experiment_anchor.data_object`
+  - `metrics.primary[0]` 必须直接测 `experiment_anchor.primary_metric`
+  - `baselines` 必须包含 `experiment_anchor.baseline` 所描述的对照
+  - `method / ablations / first_experiment` 必须显式测试 `experiment_anchor.failure_mode`
+  - 不允许选择一个 cell 后写成另一个 cell 的 dataset / metric / baseline
 - `opportunity_mode="frontier_extension"` 是待人工审议的新 cell 提案，不得在本步骤升级为工程型 gap 或 deep brief。
 
 观察窗口（重要）：
@@ -77,6 +83,7 @@
       * why_aligned: 一句话说明该实验为什么确实落在这个金融机制边界上
       * transfer_cell_id: 必须来自 fin_transfer_cells[*].cell_id；没有合适 cell 时不要输出工程型 gap
       * opportunity_mode: 必须为 "grounded_transfer"
+      * selected_experiment_anchor: 原样摘录所选 transfer cell 的 experiment_anchor，用于读者审计 data / metrics / baselines / failure_mode 是否对齐
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
@@ -242,6 +249,12 @@ Schema:
         "good_transfer_target": string,
         "transfer_cell_id": string,
         "opportunity_mode": "grounded_transfer",
+        "selected_experiment_anchor": {
+          "data_object": string,
+          "primary_metric": string,
+          "baseline": string,
+          "failure_mode": string
+        },
         "bad_target_avoided": string,
         "why_aligned": string
       },
