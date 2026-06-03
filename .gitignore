@@ -32,3 +32,4 @@ logs/
 # Temp
 tmp/
 *.tmp
+gap_log.jsonl

@@ -69,6 +69,12 @@ def run_daily(target_date: date | None = None,
         target_date, adversarial_review=s.adversarial_gap_review, client=client,
     )
 
+    # Record every generated gap in the unified ledger (mechanism-level, brand-free):
+    # the readable daily record + the cross-day dedup source (O3).
+    from .output import gap_log as gap_log_mod
+    n_logged = gap_log_mod.append_run(target_date, gap_result)
+    log.info("Gap ledger: logged %d gaps → gap_log.jsonl / GAP-LOG.md", n_logged)
+
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])
     # 3. Deep briefs are generated only after an idea reaches runnable engineering form.
