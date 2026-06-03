@@ -12,6 +12,35 @@ AlphaGap 每天读取新的高相关论文，把新的 AI 机制翻译为金融�
 
 ---
 
+## Quickstart（全新部署）
+
+一个全新 clone / 一个新装的 lumid app **自带启动数据**——~5.2k 篇论文语料（`db/seed/` 压缩种子，首次开库自解压）+ Fin 五方向前沿（`knowledge/fin_fields/`，随代码走）。**不用再手搬库、不用 backfill。** 只需两步一次性配置：
+
+```bash
+# --- GitHub clone ---
+git clone https://github.com/ycsama0703/AlphaGap.git && cd AlphaGap
+make install                      # 建 venv / 装依赖
+cp .env.example .env              # 填你自己的 key（见下）
+make bootstrap                    # 从种子解压语料到 db/alphagap.sqlite（daily 也会自动做）
+make dry-run                      # 验证：不发邮件、不写盘跑一遍
+
+# --- lumid app ---
+lumid app install alphagap
+lumid app alphagap setup          # 建 venv + 自动解压语料种子
+lumid app alphagap daily -- --dry-run
+```
+
+**`.env` 必填**（`.env` 不进 git，密钥每台机器独立）：
+- `DEEPSEEK_API_KEY`（或其它 LLM provider）—— gap 生成 + brief 必需
+- `RESEND_API_KEY` + `EMAIL_TO` / `EMAIL_FROM` —— 发每日邮件必需（dry-run 不需要）
+
+> 没填 key 也能跑 ingest（语料已在），但 gap 生成 / brief / 发邮件需要 LLM key。
+> 新部署的 findings bank 是空的（实验记忆从零积累，跑几轮 test 后自然长起来）。
+
+**刷新语料种子**（维护者，偶尔）：`make seed` 重压当前活库 → commit → push（app 侧 cp 种子 + 重新发布）。
+
+---
+
 ## Current state (as of 2026-05-22)
 
 ### Deployed
