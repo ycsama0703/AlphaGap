@@ -87,6 +87,7 @@
    - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
+     * anchor_evidence: 1 句，锚点 AI 论文里【支撑这次迁移】的那条已验证硬结果，尽量带数字（如 "AIME Pass@1 50%→58%"）。只填论文真实报告过的结果，绝不编造；无可引用的硬结果则留空字符串。这是给读者的"背书"。
      * why_this_matters: 1-2 句，为什么这个 gap 值得做（学术/产业/数据可得性），潜在 impact
    - data: 实验决策表，必须分开说明 sources、sample、period_frequency、split_protocol、leakage_controls
    - method: 至少 3 步的方法描述，足以让人照着写伪代码
@@ -141,6 +142,7 @@
   "research_context": {
     "fin_current_state": "因子组合搜索目前主要靠 genetic programming（gplearn）或 NN-based 端到端学习，依赖 train/val 集打分选优；Cong et al. 2024 的 alpha-GPT 引入 LLM agent 但未加 verifier 闭环。OOS 过拟合是公认痛点。",
     "ai_frontier": "2023 Reflexion 在代码生成上首次证明'生成-验证-反思'循环显著降低 false positive；2024-2025 verifier-based RM（Lightman et al. process reward, DeepMind Reflective RM）进一步把验证器变成可训练模块，对长程任务效果显著。",
+    "anchor_evidence": "Reflexion 在 HumanEval 上把 pass@1 从 80% 提升到 91%（GPT-4），证明 verifier 反馈对生成质量的增量",
     "why_this_matters": "因子搜索每年学术+产业大量重复劳动，verifier 闭环若能稳定降低 OOS 衰减率 20%+，工业界直接落地价值显著；学术上也是 'AI agent for scientific discovery' 在金融领域的首个端到端方案。"
   },
   "experimental_roadmap": {

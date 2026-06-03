@@ -148,9 +148,10 @@ pipeline 调用前聚合：
      * transfer_cell_id: `grounded_transfer` 时必须来自 fin_transfer_cells[*].cell_id；`frontier_extension` 时填写空字符串
      * bad_target_avoided: 若该方向容易落入 bad_transfer_targets，说明避开了哪条
      * why_aligned: 一句话说明该 gap 为什么确实落在这个金融机制边界上
-   - research_context: 研究背景三段叙述（用于读者快速判断方向价值）
+   - research_context: 研究背景叙述（用于读者快速判断方向价值）
      * fin_current_state: 2-3 句，金融领域当前在这个方向做到哪里、用什么方法、有什么局限
      * ai_frontier: 2-3 句，AI 侧最近有什么新东西可能用上、相比之前进步在哪
+     * anchor_evidence: 1 句，锚点 AI 论文里【支撑这次迁移】的那条已验证硬结果，尽量带数字。只填论文真实报告过的结果，绝不编造；无则留空字符串。这是给读者的"背书"。
      * why_this_matters: 1-2 句，为什么这个 gap 值得追，潜在 impact 是什么（学术/产业/数据可得性等）
    - reasoning_chain: 3-5 步的迁移推理（为什么 AI 的 X 可能用于 Fin 的 Y？）
    - why_open_gap: 为何认定 Fin 侧还没用上（必须基于 fin_recent_papers / existing_mappings 的负面证据）
@@ -185,6 +186,7 @@ pipeline 调用前聚合：
   "research_context": {
     "fin_current_state": "金融实践中因子衰减诊断主流仍是滚动 Sharpe、结构断点检验、IC 衰减监控等统计方法；学术上 Kelly et al. 2020/Chen-Pelger-Zhu 2022 用 ML 预测因子收益但缺乏对因子失效原因的内部归因。",
     "ai_frontier": "2024-2025 Anthropic Sparse Autoencoder 工作（Templeton et al.）首次实现对 Claude 模型内部特征的可解释抽取，可定位'某能力对应的子电路'；后续 Gemma Scope、Llama-Scope 等开源工具让该技术不再局限于闭源模型。",
+    "anchor_evidence": "Templeton et al. 2024 从 Claude 3 Sonnet 抽出数百万可解释特征并能通过钳制特征定向改变模型行为，证明内部表征可被可靠定位与干预",
     "why_this_matters": "因子衰减预警是 quant 实务核心痛点之一，目前 Sharpe 下降被发现时 PnL 已经亏出；若能在'模型内部表征下降'阶段提前预警，可显著提升因子换仓决策的 timing。学术上也填补了 ML 因子模型可解释性的空白。"
   },
   "reasoning_chain": [

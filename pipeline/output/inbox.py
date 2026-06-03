@@ -363,6 +363,63 @@ def _section_gaps_all(p: dict) -> str:
     return "\n".join(out)
 
 
+def _ai_anchor_link_md(g: dict, gtype: str) -> str:
+    pid = title = ""
+    if gtype == "engineering":
+        ais = (g.get("anchor_papers") or {}).get("ai") or []
+        if ais:
+            pid = ais[0].get("id") or ais[0].get("paper_id") or ""
+            title = ais[0].get("title") or ""
+    else:
+        aa = g.get("ai_anchor") or {}
+        pid = aa.get("paper_id") or aa.get("id") or ""
+        title = aa.get("concept") or aa.get("title") or ""
+    if not pid:
+        return title
+    if str(pid)[:1].isdigit():
+        url = f"https://arxiv.org/abs/{pid}"
+    elif str(pid).startswith("openreview"):
+        url = f"https://openreview.net/forum?id={str(pid).split(':')[-1]}"
+    else:
+        url = ""
+    return (f"[`{pid}`]({url})" if url else f"`{pid}`") + (f" {title}" if title else "")
+
+
+def _transfer_header_md(g: dict, gtype: str) -> str:
+    """Decision header (markdown): 🏦 Fin problem → 🤖 AI technique (+backing) → 🔗 transfer basis."""
+    field = g.get("field_boundary_alignment") or {}
+    ctx = g.get("research_context") or {}
+    sm = g.get("structural_mapping") or {}
+    method = g.get("method_primary")
+    if isinstance(method, list):
+        method = ", ".join(str(m) for m in method)
+    sev = sm.get("mismatch_severity", "")
+    sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
+    loc = " · ".join(x for x in [field.get("field_id", ""), field.get("mechanism_family", ""),
+                                 (f"瓶颈={field['open_bottleneck']}" if field.get("open_bottleneck") else "")] if x)
+    out = []
+    if ctx.get("fin_current_state"):
+        out.append(f"\n**🏦 Fin 问题** · {ctx['fin_current_state']}")
+    if loc:
+        out.append(f"  \n_{loc}_")
+    tech = " — ".join(x for x in [method or "", ctx.get("ai_frontier", "")] if x)
+    if tech:
+        out.append(f"\n\n**🤖 AI 技术** · {tech}")
+    backing = " · ".join(x for x in [ctx.get("anchor_evidence", ""), _ai_anchor_link_md(g, gtype)] if x)
+    if backing:
+        out.append(f"  \n**背书**: {backing}")
+    out.append("\n\n**🔗 迁移依据**")
+    if sm.get("ai_data_structure") or sm.get("fin_data_structure"):
+        out.append(f"- 结构对应 — AI: {sm.get('ai_data_structure', '?')} ／ Fin: {sm.get('fin_data_structure', '?')}")
+    if sm.get("bridge_required"):
+        out.append(f"- 桥接 — {sm['bridge_required']}")
+    if field.get("why_aligned"):
+        out.append(f"- 为什么成立 — {field['why_aligned']}")
+    if sev:
+        out.append(f"- 可信度 — {sev_emoji} {sm.get('match_status', '?')} · mismatch {sev}")
+    return "\n".join(out) + "\n"
+
+
 def _render_gap_detail(item: dict, *, full: bool) -> str:
     g = item["gap"]
     s = item["score"]
@@ -376,6 +433,8 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
         f"theory={s.get('theoretical_support', '?')}\n\n"
         f"**假设**: {hypothesis}\n"
     )
+    # Decision header: Fin problem → AI technique (+backing) → transfer basis.
+    head += _transfer_header_md(g, gtype)
     mode = g.get("opportunity_mode")
     if mode == "frontier_extension":
         head += "- opportunity_mode: `frontier_extension` — proposed new cell; human review required\n"
@@ -400,21 +459,15 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
             head += f" revised from: {origin['original_one_liner']}"
         head += "\n"
 
+    # field_id / mechanism / bottleneck / why_aligned are in the transfer header;
+    # keep only the audit-specific good/bad transfer targets here.
     field = g.get("field_boundary_alignment") or {}
-    if field:
-        head += "\n**Fin field boundary**:\n"
-        if field.get("field_id"):
-            head += f"- Field: `{field['field_id']}`\n"
-        if field.get("mechanism_family"):
-            head += f"- Mechanism family: {field['mechanism_family']}\n"
-        if field.get("open_bottleneck"):
-            head += f"- Bottleneck: {field['open_bottleneck']}\n"
+    if field.get("good_transfer_target") or field.get("bad_target_avoided"):
+        head += "\n**Transfer targeting**:\n"
         if field.get("good_transfer_target"):
-            head += f"- Good transfer target: {field['good_transfer_target']}\n"
+            head += f"- ✅ Good transfer target: {field['good_transfer_target']}\n"
         if field.get("bad_target_avoided"):
-            head += f"- Bad target avoided: {field['bad_target_avoided']}\n"
-        if field.get("why_aligned"):
-            head += f"- Why aligned: {field['why_aligned']}\n"
+            head += f"- 🚫 Bad target avoided: {field['bad_target_avoided']}\n"
     proposed = g.get("proposed_cell") or {}
     if g.get("opportunity_mode") == "frontier_extension" and proposed:
         head += "\n**Proposed new transfer cell (not active)**:\n"
@@ -427,26 +480,11 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
         if proposed.get("why_existing_cells_insufficient"):
             head += f"- Why existing cells are insufficient: {proposed['why_existing_cells_insufficient']}\n"
 
-    sm = g.get("structural_mapping") or {}
-    if sm:
-        sev = sm.get("mismatch_severity", "?")
-        status = sm.get("match_status", "?")
-        sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
-        head += f"\n**🔗 Structural mapping** ({status} · {sev_emoji} mismatch={sev}):\n"
-        head += f"- AI: {sm.get('ai_data_structure', '?')}\n"
-        head += f"- Fin: {sm.get('fin_data_structure', '?')}\n"
-        if sm.get("bridge_required"):
-            head += f"- Bridge: {sm['bridge_required']}\n"
-
-    ctx = g.get("research_context") or {}
-    if ctx:
-        head += "\n**Research context**:\n"
-        if ctx.get("fin_current_state"):
-            head += f"- 🏦 *Fin 当前进展*: {ctx['fin_current_state']}\n"
-        if ctx.get("ai_frontier"):
-            head += f"- 🤖 *AI 前沿*: {ctx['ai_frontier']}\n"
-        if ctx.get("why_this_matters"):
-            head += f"- ⭐ *为什么这个 gap 值得做*: {ctx['why_this_matters']}\n"
+    # Structural mapping + research context (Fin/AI) are folded into the transfer
+    # header above; keep only the impact one-liner here.
+    why = (g.get("research_context") or {}).get("why_this_matters")
+    if why:
+        head += f"\n**⭐ 为什么值得做**: {why}\n"
 
     if gtype == "theoretical":
         ai = g.get("ai_anchor", {})

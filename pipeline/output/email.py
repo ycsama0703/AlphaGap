@@ -267,6 +267,82 @@ def _leads_html(p: dict) -> str:
     return "\n".join(out)
 
 
+def _ai_anchor_link(g: dict, gtype: str) -> str:
+    """Clickable AI anchor paper (the backing). Engineering uses anchor_papers.ai;
+    theoretical uses ai_anchor."""
+    pid = title = ""
+    if gtype == "engineering":
+        ais = (g.get("anchor_papers") or {}).get("ai") or []
+        if ais:
+            pid = ais[0].get("id") or ais[0].get("paper_id") or ""
+            title = ais[0].get("title") or ""
+    else:
+        aa = g.get("ai_anchor") or {}
+        pid = aa.get("paper_id") or aa.get("id") or ""
+        title = aa.get("concept") or aa.get("title") or ""
+    if not pid:
+        return _e(title)
+    if pid[:1].isdigit():
+        url = f"https://arxiv.org/abs/{pid}"
+    elif str(pid).startswith("openreview"):
+        url = f"https://openreview.net/forum?id={str(pid).split(':')[-1]}"
+    else:
+        url = ""
+    label = f"[{_e(pid)}]"
+    link = (f"<a href='{url}' style='color:#2563eb;text-decoration:none;'>{label} ↗</a>"
+            if url else label)
+    return link + (f" {_e(title)}" if title else "")
+
+
+def _transfer_header_html(g: dict, gtype: str) -> str:
+    """The decision header: 🏦 Fin problem → 🤖 AI technique (+backing) → 🔗 transfer basis.
+    Folds in field_boundary_alignment, research_context and structural_mapping so the
+    human sees what problem / what new technique / why it transfers at a glance."""
+    field = g.get("field_boundary_alignment") or {}
+    ctx = g.get("research_context") or {}
+    sm = g.get("structural_mapping") or {}
+    method = g.get("method_primary")
+    if isinstance(method, list):
+        method = ", ".join(str(m) for m in method)
+    sev = sm.get("mismatch_severity", "")
+    sev_color = {"low": "#0a6e3d", "medium": "#b07000", "high": "#c0392b"}.get(sev, "#888")
+    sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
+    loc = " · ".join(x for x in [
+        _e(field.get("field_id", "")), _e(field.get("mechanism_family", "")),
+        (f"瓶颈={_e(field['open_bottleneck'])}" if field.get("open_bottleneck") else ""),
+    ] if x)
+
+    out = ["<div style='background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;"
+           "padding:12px 16px;margin:10px 0;font-size:13px;line-height:1.55;'>"]
+    # 1 — Fin problem first
+    if ctx.get("fin_current_state"):
+        out.append(f"<p style='margin:4px 0;'><b>🏦 Fin 问题</b> · {_e(ctx['fin_current_state'])}</p>")
+    if loc:
+        out.append(f"<p style='margin:2px 0 10px;color:#888;font-size:12px;'>{loc}</p>")
+    # 2 — AI technique + backing
+    tech = " — ".join(x for x in [_e(method) if method else "", _e(ctx.get("ai_frontier", ""))] if x)
+    if tech:
+        out.append(f"<p style='margin:4px 0;'><b>🤖 AI 技术</b> · {tech}</p>")
+    evid, link = _e(ctx.get("anchor_evidence", "")), _ai_anchor_link(g, gtype)
+    if evid or link:
+        backing = " · ".join(x for x in [evid, link] if x)
+        out.append(f"<p style='margin:2px 0 10px;color:#475569;font-size:12px;'><b>背书</b>: {backing}</p>")
+    # 3 — transfer basis (expanded)
+    out.append("<p style='margin:8px 0 2px;'><b>🔗 迁移依据</b></p>")
+    if sm.get("ai_data_structure") or sm.get("fin_data_structure"):
+        out.append(f"<p style='margin:2px 0;'>· <b>结构对应</b> — AI: {_e(sm.get('ai_data_structure', '?'))}"
+                   f" ／ Fin: {_e(sm.get('fin_data_structure', '?'))}</p>")
+    if sm.get("bridge_required"):
+        out.append(f"<p style='margin:2px 0;'>· <b>桥接</b> — {_e(sm['bridge_required'])}</p>")
+    if field.get("why_aligned"):
+        out.append(f"<p style='margin:2px 0;'>· <b>为什么成立</b> — {_e(field['why_aligned'])}</p>")
+    if sev:
+        out.append(f"<p style='margin:2px 0;color:{sev_color};'>· <b>可信度</b> — "
+                   f"{sev_emoji} {_e(sm.get('match_status', '?'))} · mismatch {_e(sev)}</p>")
+    out.append("</div>")
+    return "\n".join(out)
+
+
 def _gap_card_html(item: dict) -> str:
     g = item["gap"]
     s = item["score"]
@@ -311,25 +387,9 @@ def _gap_card_html(item: dict) -> str:
             f"Gate: {_e(s.get('email_gate'))} · {_e(s.get('email_gate_reason', ''))}</p>"
         )
 
-    field = g.get("field_boundary_alignment") or {}
-    if field:
-        bits = []
-        if field.get("field_id"):
-            bits.append(f"Field: <b>{_e(field['field_id'])}</b>")
-        if field.get("mechanism_family"):
-            bits.append(f"Boundary: {_e(field['mechanism_family'])}")
-        if field.get("open_bottleneck"):
-            bits.append(f"Bottleneck: {_e(field['open_bottleneck'])}")
-        if bits:
-            out.append(
-                f"<p style='margin:6px 0;font-size:13px;color:#555;'>"
-                f"{' · '.join(bits)}</p>"
-            )
-        if field.get("why_aligned"):
-            out.append(
-                f"<p style='margin:4px 0 8px 0;font-size:12px;color:#777;'>"
-                f"{_e(field['why_aligned'])}</p>"
-            )
+    # Decision header: Fin problem → AI technique (+backing) → transfer basis.
+    out.append(_transfer_header_html(g, gtype))
+
     proposed = g.get("proposed_cell") or {}
     if mode == "frontier_extension" and proposed:
         out.append(
@@ -344,34 +404,11 @@ def _gap_card_html(item: dict) -> str:
             "</div>"
         )
 
-    # Structural mapping (Tier 1.2)
-    sm = g.get("structural_mapping") or {}
-    if sm:
-        sev = sm.get("mismatch_severity", "?")
-        sev_color = {"low": "#0a6e3d", "medium": "#b07000", "high": "#c0392b"}.get(sev, "#888")
-        sev_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(sev, "⚪")
-        out.append(
-            f"<div style='background:#fff8e6;padding:10px 14px;border-radius:6px;margin:10px 0;font-size:14px;'>"
-            f"<p style='margin:4px 0;'><b>🔗 Structural mapping</b> · "
-            f"<span style='color:{sev_color};'>{sev_emoji} {_e(sm.get('match_status', '?'))} · mismatch {_e(sev)}</span></p>"
-            f"<p style='margin:4px 0;'><b>AI</b>: {_e(sm.get('ai_data_structure', '?'))}</p>"
-            f"<p style='margin:4px 0;'><b>Fin</b>: {_e(sm.get('fin_data_structure', '?'))}</p>"
-        )
-        if sm.get("bridge_required"):
-            out.append(f"<p style='margin:4px 0;'><b>Bridge</b>: {_e(sm['bridge_required'])}</p>")
-        out.append("</div>")
-
-    # Research context block
-    ctx = g.get("research_context") or {}
-    if ctx:
-        out.append("<div style='background:#f6f8fa;padding:10px 14px;border-radius:6px;margin:10px 0;font-size:14px;'>")
-        if ctx.get("fin_current_state"):
-            out.append(f"<p style='margin:4px 0;'><b>🏦 Fin 当前</b>: {_e(ctx['fin_current_state'])}</p>")
-        if ctx.get("ai_frontier"):
-            out.append(f"<p style='margin:4px 0;'><b>🤖 AI 前沿</b>: {_e(ctx['ai_frontier'])}</p>")
-        if ctx.get("why_this_matters"):
-            out.append(f"<p style='margin:4px 0;'><b>⭐ Why this matters</b>: {_e(ctx['why_this_matters'])}</p>")
-        out.append("</div>")
+    # Why this matters (impact one-liner; structural mapping + research context are
+    # folded into the transfer header above).
+    why = (g.get("research_context") or {}).get("why_this_matters")
+    if why:
+        out.append(f"<p style='margin:8px 0;font-size:12px;color:#777;'><b>⭐ Why this matters</b> · {_e(why)}</p>")
 
     # Type-specific details
     if gtype == "engineering":
