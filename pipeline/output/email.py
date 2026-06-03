@@ -25,10 +25,14 @@ log = logging.getLogger(__name__)
 def send_daily_email(d: date, payload: dict) -> None:
     s = load_settings()
 
-    subject = (
-        f"[AlphaGap] {d.isoformat()} · "
-        f"{len(payload.get('email_ready', []))} runnable experiments"
-    )
+    n_exp = len(payload.get("email_ready", []))
+    n_leads = len(payload.get("theoretical_leads", []))
+    if n_exp:
+        subject = f"[AlphaGap] {d.isoformat()} · {n_exp} runnable experiments"
+    elif n_leads:
+        subject = f"[AlphaGap] {d.isoformat()} · {n_leads} exploratory leads (0 runnable)"
+    else:
+        subject = f"[AlphaGap] {d.isoformat()} · 0 runnable experiments"
     attachments = _brief_attachments(payload)
     html = _render_html(d, payload)
 
@@ -99,6 +103,7 @@ def _render_html(d: date, p: dict) -> str:
         f"<h1 style='margin-bottom:4px;'>AlphaGap — {d.isoformat()}</h1>",
         _stats_compact_html(p),
         _gaps_html(p),
+        _leads_html(p),
         _trends_html(p) if _has_trend_content(p) else "",
         _papers_html(p),
         _mapping_actions_html(p),
@@ -220,6 +225,15 @@ def _has_trend_content(p: dict) -> bool:
 def _gaps_html(p: dict) -> str:
     eg = p.get("email_ready", [])
     if not eg:
+        # Defer the empty-state to _leads_html: if there are theoretical leads we
+        # surface those instead of a bare "nothing today" message.
+        if p.get("theoretical_leads"):
+            return (
+                "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
+                "Runnable Experiments</h2>"
+                "<p style='color:#888;'><em>No engineering experiment cleared the "
+                "go/no-go gate today — exploratory leads below.</em></p>"
+            )
         return (
             "<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
             "Runnable Experiments</h2>"
@@ -229,6 +243,26 @@ def _gaps_html(p: dict) -> str:
     out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;'>"
            f"Runnable Experiments ({len(eg)})</h2>"]
     for item in eg:
+        out.append(_gap_card_html(item))
+    return "\n".join(out)
+
+
+def _leads_html(p: dict) -> str:
+    """O4 thin-day fallback: render accepted theoretical gaps as exploratory leads.
+
+    Not runnable experiments — accepted hypotheses worth a human glance that may
+    mature into an experiment or seed a new transfer cell. Reuses _gap_card_html
+    (cards already render the theoretical type/score), so this is just a header + cards.
+    """
+    leads = p.get("theoretical_leads", []) or []
+    if not leads:
+        return ""
+    out = [f"<h2 style='border-bottom:1px solid #ddd;padding-bottom:4px;margin-top:24px;'>"
+           f"💡 Exploratory Leads ({len(leads)})</h2>"
+           f"<p style='color:#888;font-size:13px;margin-top:0;'>Accepted theoretical "
+           f"gaps — not yet a gated experiment. Worth a glance: a candidate to mature "
+           f"into a runnable test or to seed a new transfer cell.</p>"]
+    for item in leads:
         out.append(_gap_card_html(item))
     return "\n".join(out)
 

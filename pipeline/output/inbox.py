@@ -34,6 +34,7 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         _section_stats(payload),
         _section_risk_audit(payload),
         _section_gaps_email(payload),
+        _section_leads(payload),
         _section_suppressed_duplicates(payload),
         _section_gaps_all(payload),
         _section_self_check_ledger(payload),
@@ -310,6 +311,26 @@ def _section_gaps_email(p: dict) -> str:
     return "\n".join(out)
 
 
+def _section_leads(p: dict) -> str:
+    """O4: exploratory leads — accepted theoretical gaps surfaced on thin days."""
+    leads = p.get("theoretical_leads", []) or []
+    if not leads:
+        return ""
+    out = ["## Exploratory Leads (theoretical)",
+           "_Accepted theoretical gaps — not a gated experiment. Candidates to mature "
+           "into a runnable test or to seed a new transfer cell._"]
+    for item in leads:
+        out.append(_render_gap_detail(item, full=True))
+    return "\n".join(out)
+
+
+def _lead_ids(p: dict) -> set:
+    return {
+        (it["gap"].get("_id"))
+        for it in (p.get("theoretical_leads", []) or [])
+    }
+
+
 def _section_suppressed_duplicates(p: dict) -> str:
     suppressed = p.get("duplicates_suppressed") or []
     if not suppressed:
@@ -326,7 +347,10 @@ def _section_suppressed_duplicates(p: dict) -> str:
 
 def _section_gaps_all(p: dict) -> str:
     accepted = p.get("accepted", [])
-    below = [a for a in accepted if not a["score"]["passes_email_threshold"]]
+    lead_ids = _lead_ids(p)  # O4: avoid double-listing leads already shown above
+    below = [a for a in accepted
+             if not a["score"]["passes_email_threshold"]
+             and a["gap"].get("_id") not in lead_ids]
     if not below:
         return ""
     out = ["## Discussion Queue (not emailed)"]

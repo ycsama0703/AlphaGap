@@ -24,10 +24,11 @@ log = logging.getLogger(__name__)
 
 EMAIL_DUPLICATE_SIMILARITY_THRESHOLD = 0.42
 CANDIDATE_ENUMERATION_MAX_TOKENS = 8192
-MAX_CANDIDATES_FOR_REFINEMENT = 4
-MAX_THEORETICAL_GAPS = 4
+MAX_CANDIDATES_FOR_REFINEMENT = 6   # O4: wider funnel → more field diversity, fewer empty days
+MAX_THEORETICAL_GAPS = 6            # O4: let the wider candidate pool flow through to theoretical
 THEORETICAL_EXPANSION_MAX_TOKENS = 16384
-MAX_ENGINEERING_GAPS = 2
+MAX_ENGINEERING_GAPS = 2           # runnable experiments stay focused (each → an expensive brief)
+MAX_THEORETICAL_LEADS = 3          # O4: on thin days, surface up to N theoretical gaps as exploratory leads
 ENGINEERING_EXPANSION_MAX_TOKENS = 32768
 ENGINEERING_REPAIR_MAX_TOKENS = 32768
 MAX_FRONTIER_CANDIDATES_SELECTED = 1
@@ -1031,12 +1032,13 @@ def run_gap_pipeline(end_date: date | None = None,
             rejected.append(item)
 
     email_ready = select_email_experiments(accepted)
+    theoretical_leads = select_theoretical_leads(accepted, email_ready)
     duplicates_suppressed: list[dict] = []
     log.info(
         "Gap pipeline: %d generated → %d accepted → %d email-ready "
-        "(%d theoretical duplicates suppressed) ($%.4f)",
-        len(all_gaps), len(accepted), len(email_ready), len(duplicates_suppressed),
-        client.estimate_cost_usd(),
+        "+ %d theoretical leads (%d theoretical duplicates suppressed) ($%.4f)",
+        len(all_gaps), len(accepted), len(email_ready), len(theoretical_leads),
+        len(duplicates_suppressed), client.estimate_cost_usd(),
     )
 
     return {
@@ -1048,6 +1050,7 @@ def run_gap_pipeline(end_date: date | None = None,
         "rejected": rejected,
         "downgraded": downgraded,
         "email_ready": email_ready,
+        "theoretical_leads": theoretical_leads,
         "duplicates_suppressed": duplicates_suppressed,
     }
 
@@ -1060,6 +1063,34 @@ def select_email_experiments(accepted: list[dict],
         if item.get("type") == "engineering"
         and item.get("score", {}).get("passes_email_threshold")
     ][:limit]
+
+
+def select_theoretical_leads(accepted: list[dict], email_ready: list[dict],
+                             limit: int = MAX_THEORETICAL_LEADS) -> list[dict]:
+    """O4: thin-day fallback — surface accepted theoretical gaps as exploratory
+    'leads' so the daily output is never empty.
+
+    These are NOT runnable experiments (no go/no-go-gated engineering plan), but
+    accepted theoretical gaps are still worth a human glance: they may mature into
+    an experiment or seed a new transfer cell. We only surface them when there are
+    fewer runnable experiments than the daily target, and we exclude any theoretical
+    gap already represented by an email-ready engineering experiment for the same
+    candidate (avoid showing a lead and its upgraded experiment side by side).
+    """
+    if len(email_ready) >= MAX_ENGINEERING_GAPS:
+        return []
+
+    def _cand_key(g: dict):
+        return g.get("source_candidate_idx") or g.get("candidate_idx")
+
+    promoted = {k for k in (_cand_key(item["gap"]) for item in email_ready) if k is not None}
+    leads = [
+        item for item in accepted
+        if item.get("type") == "theoretical"
+        and _cand_key(item["gap"]) not in promoted
+    ]
+    leads.sort(key=lambda it: it.get("score", {}).get("total", 0), reverse=True)
+    return leads[:limit]
 
 
 def _ai_method_names(ai_recent_papers: list[dict]) -> list[str]:
