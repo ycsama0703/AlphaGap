@@ -385,6 +385,31 @@ def _ai_anchor_link_md(g: dict, gtype: str) -> str:
     return (f"[`{pid}`]({url})" if url else f"`{pid}`") + (f" {title}" if title else "")
 
 
+def _feasibility_verdict_md(g: dict) -> str:
+    """Crisp triage verdict (findata-native? compute? time?). Empty when no roadmap."""
+    rm = g.get("experimental_roadmap") or {}
+    cp = rm.get("compute_profile") or {}
+    native = cp.get("findata_native")
+    tier = (cp.get("tier") or "").lower()
+    effort = str(rm.get("estimated_effort") or cp.get("estimated_runtime") or "")
+    if native is None and not tier and not effort:
+        return ""
+    months = any(k in effort for k in ("月", "month"))
+    weeks = any(k in effort for k in ("周", "week"))
+    emoji = "🔴" if (native is False or tier in ("high", "very_high") or months) else (
+        "🟡" if (tier == "medium" or weeks) else "🟢")
+    bits = []
+    if native is True:
+        bits.append("findata 原生")
+    elif native is False:
+        bits.append("需外部数据")
+    if tier:
+        bits.append(f"compute {tier}")
+    if effort:
+        bits.append(effort)
+    return f"{emoji} {' · '.join(bits) or '?'}"
+
+
 def _transfer_header_md(g: dict, gtype: str) -> str:
     """Decision header (markdown): 🏦 Fin problem → 🤖 AI technique (+backing) → 🔗 transfer basis."""
     field = g.get("field_boundary_alignment") or {}
@@ -417,6 +442,9 @@ def _transfer_header_md(g: dict, gtype: str) -> str:
         out.append(f"- 为什么成立 — {field['why_aligned']}")
     if sev:
         out.append(f"- 可信度 — {sev_emoji} {sm.get('match_status', '?')} · mismatch {sev}")
+    feas = _feasibility_verdict_md(g)
+    if feas:
+        out.append(f"- 🧪 可行性 — {feas}")
     return "\n".join(out) + "\n"
 
 

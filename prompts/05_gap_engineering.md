@@ -105,6 +105,7 @@
      * main_bottleneck: 主要瓶颈，如 "数据清洗", "LLM API 成本", "GPU 训练"
      * summary: 一句话说明资源要求
      * fallback: 低算力替代方案，如 "先用线性模型 / 小样本 / API judge 验证机制"
+     * findata_native: true/false —— 整个实验（不只 Phase 0）能否仅靠 findata / 自包含数据跑通；若需 WRDS / CRSP / Compustat / 自建回测语料等外部数据则填 false。这是给人"几天能跑 vs 要先建数据"的可行性判断，不参与评分。
    - estimated_effort: 人月估计（如 "2-3 个月 / 1 人"）
    - key_risks: 1-3 条可能踩坑（数据可得性、训练成本、方法适配性）
    - anchor_papers: ai 和 fin 侧各自的锚定论文
@@ -191,7 +192,8 @@
       "estimated_runtime": "1-3 天 / 1000 个候选因子",
       "main_bottleneck": "LLM verifier API 成本与因子回测数据清洗",
       "summary": "回测本身 CPU 可跑，主要新增成本来自多轮 LLM verifier 调用",
-      "fallback": "先用 100 个候选因子 + 小模型/API judge 验证 verifier 是否有预测力"
+      "fallback": "先用 100 个候选因子 + 小模型/API judge 验证 verifier 是否有预测力",
+      "findata_native": false
     },
     "estimated_effort": "2-3 个月 / 1 人",
     "key_risks": [

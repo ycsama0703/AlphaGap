@@ -294,6 +294,37 @@ def _ai_anchor_link(g: dict, gtype: str) -> str:
     return link + (f" {_e(title)}" if title else "")
 
 
+def _feasibility_verdict(g: dict):
+    """Crisp triage verdict from structured fields (findata-native? compute? time?).
+    Returns (emoji, color, text) or None when there's no roadmap/compute data (e.g.
+    theoretical leads). Purely human-facing at-a-glance — never gates or scores."""
+    rm = g.get("experimental_roadmap") or {}
+    cp = rm.get("compute_profile") or {}
+    native = cp.get("findata_native")
+    tier = (cp.get("tier") or "").lower()
+    effort = str(rm.get("estimated_effort") or cp.get("estimated_runtime") or "")
+    if native is None and not tier and not effort:
+        return None
+    months = any(k in effort for k in ("月", "month"))
+    weeks = any(k in effort for k in ("周", "week"))
+    if native is False or tier in ("high", "very_high") or months:
+        emoji, color = "🔴", "#c0392b"
+    elif tier == "medium" or weeks:
+        emoji, color = "🟡", "#b07000"
+    else:
+        emoji, color = "🟢", "#0a6e3d"
+    bits = []
+    if native is True:
+        bits.append("findata 原生")
+    elif native is False:
+        bits.append("需外部数据")
+    if tier:
+        bits.append(f"compute {tier}")
+    if effort:
+        bits.append(effort)
+    return emoji, color, " · ".join(bits) or "?"
+
+
 def _transfer_header_html(g: dict, gtype: str) -> str:
     """The decision header: 🏦 Fin problem → 🤖 AI technique (+backing) → 🔗 transfer basis.
     Folds in field_boundary_alignment, research_context and structural_mapping so the
@@ -339,6 +370,11 @@ def _transfer_header_html(g: dict, gtype: str) -> str:
     if sev:
         out.append(f"<p style='margin:2px 0;color:{sev_color};'>· <b>可信度</b> — "
                    f"{sev_emoji} {_e(sm.get('match_status', '?'))} · mismatch {_e(sev)}</p>")
+    feas = _feasibility_verdict(g)
+    if feas:
+        emoji, color, text = feas
+        out.append(f"<p style='margin:8px 0 2px;color:{color};'><b>🧪 可行性</b> — "
+                   f"{emoji} {_e(text)}</p>")
     out.append("</div>")
     return "\n".join(out)
 
