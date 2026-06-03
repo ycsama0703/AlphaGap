@@ -69,7 +69,7 @@ def _section_stats(p: dict) -> str:
             f" ({len(selected)}/{len(available) or len(selected)})"
         )
     suppressed_line = (
-        f"- Theoretical email duplicates suppressed: {len(suppressed)}\n"
+        f"- Near-duplicate gaps suppressed for diversity (D1): {len(suppressed)}\n"
         if suppressed else ""
     )
     return (
@@ -335,13 +335,17 @@ def _section_suppressed_duplicates(p: dict) -> str:
     suppressed = p.get("duplicates_suppressed") or []
     if not suppressed:
         return ""
-    lines = ["## Folded Theoretical Duplicates"]
+    lines = ["## Diversity-Suppressed Near-Duplicates",
+             "_Runnable gaps collapsed because they share a Fin mechanism boundary "
+             "and an overlapping hypothesis (D1); the higher-scored one was kept._"]
     for item in suppressed:
         gap = item.get("gap") or {}
         gid = gap.get("_id", "?")
-        covered_by = item.get("_email_suppressed_by", "?")
+        covered_by = item.get("_diversity_suppressed_by") or item.get("_email_suppressed_by", "?")
+        reason = item.get("_diversity_suppressed_reason", "")
         hypothesis = gap.get("hypothesis", "?")
-        lines.append(f"- `{gid}` folded into `{covered_by}`: {hypothesis}")
+        suffix = f"  _({reason})_" if reason else ""
+        lines.append(f"- `{gid}` folded into `{covered_by}`: {hypothesis}{suffix}")
     return "\n".join(lines)
 
 

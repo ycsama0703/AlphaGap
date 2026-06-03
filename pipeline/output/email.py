@@ -119,7 +119,7 @@ def _stats_compact_html(p: dict) -> str:
     s = p.get("stats", {})
     duplicate_count = len(p.get("duplicates_suppressed", []))
     duplicate_text = (
-        f" · {duplicate_count} theory duplicates folded"
+        f" · {duplicate_count} near-dupes folded (diversity)"
         if duplicate_count else ""
     )
     audit = p.get("risk_audit") or {}

@@ -23,6 +23,11 @@ from . import uptake as uptake_mod
 log = logging.getLogger(__name__)
 
 EMAIL_DUPLICATE_SIMILARITY_THRESHOLD = 0.42
+# D1 (diversity): within the runnable set, collapse gaps that share the same Fin
+# mechanism boundary AND have an overlapping hypothesis, keeping the higher-scored
+# one — so a day's output explores diverse boundaries, not variants of one idea.
+# (Proximity-clustering pattern, AI co-scientist; see AUTO-RESEARCH-UPGRADES.md D1.)
+DIVERSITY_SIMILARITY_THRESHOLD = 0.50
 CANDIDATE_ENUMERATION_MAX_TOKENS = 8192
 MAX_CANDIDATES_FOR_REFINEMENT = 6   # O4: wider funnel → more field diversity, fewer empty days
 MAX_THEORETICAL_GAPS = 6            # O4: let the wider candidate pool flow through to theoretical
@@ -844,6 +849,60 @@ def _duplicate_comparison_text(gap: dict) -> str:
     )
 
 
+def _item_total_score(item: dict) -> float:
+    try:
+        return float((item.get("score") or {}).get("total") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def diversify_gaps(items: list[dict]) -> tuple[list[dict], list[dict]]:
+    """D1 — diversity pass over a set of scored gap items.
+
+    Collapses near-duplicate gaps that share the same Fin mechanism boundary
+    (field_id + mechanism_family) AND an overlapping hypothesis, keeping the
+    higher-scored one. Prevents a day's runnable output from collapsing into
+    several variants of one idea. Borrowed from the AI co-scientist's Proximity
+    clustering; reuses the existing similarity + boundary helpers.
+
+    Returns (kept, suppressed). Suppressed items are annotated and remain
+    available for the audit inbox.
+    """
+    kept: list[dict] = []
+    suppressed: list[dict] = []
+    for item in items:
+        gap = item.get("gap") or {}
+        match = None
+        for idx, k in enumerate(kept):
+            kgap = k.get("gap") or {}
+            if not _same_field_mechanism_boundary(gap, kgap):
+                continue
+            sim = scoring_mod._similarity(
+                _duplicate_comparison_text(gap),
+                _duplicate_comparison_text(kgap),
+            )
+            if sim >= DIVERSITY_SIMILARITY_THRESHOLD:
+                match = (idx, k, sim)
+                break
+        if match is None:
+            kept.append(item)
+            continue
+        idx, kept_item, sim = match
+        # Higher total score wins; the loser is suppressed (but retained for audit).
+        if _item_total_score(item) > _item_total_score(kept_item):
+            winner, loser = item, kept_item
+            kept[idx] = item
+        else:
+            winner, loser = kept_item, item
+        loser["_diversity_suppressed_by"] = (winner.get("gap") or {}).get("_id", "?")
+        loser["_diversity_suppressed_reason"] = (
+            "same Fin mechanism boundary and overlapping hypothesis "
+            f"(similarity={sim:.3f})"
+        )
+        suppressed.append(loser)
+    return kept, suppressed
+
+
 # ---------- Orchestrator: generate → self-check → score ----------
 
 def run_gap_pipeline(end_date: date | None = None,
@@ -1034,11 +1093,14 @@ def run_gap_pipeline(end_date: date | None = None,
             rejected.append(item)
 
     email_ready = select_email_experiments(accepted)
+    # D1 — diversity pass: collapse near-duplicate runnable gaps on the same Fin
+    # mechanism boundary. Runs BEFORE O4 leads so any slot it frees can be backfilled
+    # by an exploratory theoretical lead rather than a variant of an already-shown idea.
+    email_ready, duplicates_suppressed = diversify_gaps(email_ready)
     theoretical_leads = select_theoretical_leads(accepted, email_ready)
-    duplicates_suppressed: list[dict] = []
     log.info(
         "Gap pipeline: %d generated → %d accepted → %d email-ready "
-        "+ %d theoretical leads (%d theoretical duplicates suppressed) ($%.4f)",
+        "+ %d theoretical leads (%d near-duplicate gaps suppressed for diversity) ($%.4f)",
         len(all_gaps), len(accepted), len(email_ready), len(theoretical_leads),
         len(duplicates_suppressed), client.estimate_cost_usd(),
     )
