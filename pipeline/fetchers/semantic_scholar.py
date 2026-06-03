@@ -97,6 +97,60 @@ def fetch_citation_counts(arxiv_ids: list[str]) -> dict[str, S2Paper]:
     return out
 
 
+_SEARCH_FIELDS = ("title,abstract,venue,year,authors,externalIds,url,"
+                  "fieldsOfStudy,citationCount")
+
+
+def search_fin_conf_papers(venues: list[str], *, year_from: int,
+                           query: str = "financial|finance|trading|portfolio|"
+                           "\"asset pricing\"|\"stock market\"|\"order book\"|"
+                           "\"option pricing\"|\"credit risk\"|\"market making\"",
+                           fields_of_study: str = "",
+                           limit: int = 200) -> list[dict]:
+    """Search Semantic Scholar for finance-relevant papers at given conference venues.
+
+    Uses /paper/search/bulk with a venue filter + a finance `query` (S2 bulk OR syntax
+    uses `|`). NOTE: do NOT filter by fieldsOfStudy=Economics here — ML-for-finance conf
+    papers are tagged 'Computer Science' by S2, so an Economics filter drops them; the
+    finance query is what selects the relevant slice. Paginates via the continuation
+    token up to `limit`. Returns raw S2 paper dicts.
+    """
+    out: list[dict] = []
+    params = {
+        "query": query,
+        "venue": ",".join(venues),
+        "year": f"{year_from}-",
+        "fields": _SEARCH_FIELDS,
+    }
+    if fields_of_study:
+        params["fieldsOfStudy"] = fields_of_study
+    token: str | None = None
+    while len(out) < limit:
+        if token:
+            params["token"] = token
+        try:
+            resp = requests.get(f"{S2_BASE}/paper/search/bulk", params=params,
+                                headers=_headers(), timeout=60)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            log.warning("S2 search network error: %s", e)
+            time.sleep(RATE_LIMIT_SLEEP * 3)
+            break
+        if resp.status_code == 429:
+            log.warning("S2 search rate limited; back off 30s")
+            time.sleep(30)
+            continue
+        if resp.status_code != 200:
+            log.warning("S2 search HTTP %s: %s", resp.status_code, resp.text[:200])
+            break
+        data = resp.json()
+        out.extend(data.get("data") or [])
+        token = data.get("token")
+        if not token:
+            break
+        time.sleep(RATE_LIMIT_SLEEP)
+    return out[:limit]
+
+
 # CLI quick test
 if __name__ == "__main__":
     import sys
