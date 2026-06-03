@@ -21,37 +21,131 @@ log = logging.getLogger(__name__)
 AI_INNOVATION_PLAYBOOK_PATH = PROJECT_ROOT / "knowledge" / "ai_innovation_playbook.md"
 
 
+# O2 — anchor rotation + diversity. Instead of the same static top-N-by-score every
+# day, fetch a larger pool, re-rank with a recency boost (so the daily set shifts as
+# new papers arrive), and greedily select with per-affiliation / per-topic caps (so a
+# day's anchors aren't N variants of one lab/mechanism). Tunables — review freely.
+PAPER_POOL_MULT = 6        # fetch top_n × this, then diversify down to top_n
+RECENCY_WEIGHT = 0.5       # newest in-window paper gets +50% effective score; oldest +0%
+MAX_PER_AFFILIATION = 3    # ≤ this many anchors from the same lead affiliation
+MAX_PER_TOPIC = 4          # ≤ this many anchors sharing a coarse topic key
+MIN_RECENT_SLOTS = 5       # reserve this many slots for the NEWEST in-window papers
+                           # (regardless of score) so fresh anchors enter every day
+
+
+def _paper_topic_key(d: dict) -> str:
+    dom = d.get("domain") or []
+    meth = d.get("method_primary") or []
+    return (dom[0] if dom else (meth[0] if meth else "other")).strip().lower()
+
+
+def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
+                           window_days: int) -> list[dict]:
+    """Recency-weighted, diversity-capped selection from a scored pool."""
+    for d in pool:
+        try:
+            pub = date.fromisoformat(str(d.get("publication_date"))[:10])
+            age = max(0, (end_date - pub).days)
+        except Exception:
+            age = window_days
+        recency = 1.0 - min(age, window_days) / max(1, window_days)
+        d["_eff"] = (d.get("priority_score") or 0.0) * (1.0 + RECENCY_WEIGHT * recency)
+    selected: list[dict] = []
+    per_aff: dict[str, int] = {}
+    per_topic: dict[str, int] = {}
+
+    def _take(d):
+        aff = d.get("affiliation_top") or "?"
+        tk = _paper_topic_key(d)
+        per_aff[aff] = per_aff.get(aff, 0) + 1
+        per_topic[tk] = per_topic.get(tk, 0) + 1
+        selected.append(d)
+
+    # Reserve a few slots for the NEWEST in-window papers (regardless of score), so
+    # fresh anchors enter daily and the set isn't frozen by sticky priority_score.
+    if MIN_RECENT_SLOTS > 0 and len(pool) > top_n:
+        by_recent = sorted(pool, key=lambda d: str(d.get("publication_date")), reverse=True)
+        chosen_ids: set = set()
+        for d in by_recent:
+            if len(selected) >= min(MIN_RECENT_SLOTS, top_n):
+                break
+            if per_topic.get(_paper_topic_key(d), 0) >= MAX_PER_TOPIC:
+                continue
+            _take(d); chosen_ids.add(id(d))
+        pool = [d for d in pool if id(d) not in chosen_ids]
+
+    pool.sort(key=lambda d: -d["_eff"])
+    for d in pool:
+        aff = d.get("affiliation_top") or "?"
+        tk = _paper_topic_key(d)
+        if per_aff.get(aff, 0) >= MAX_PER_AFFILIATION:
+            continue
+        if per_topic.get(tk, 0) >= MAX_PER_TOPIC:
+            continue
+        per_aff[aff] = per_aff.get(aff, 0) + 1
+        per_topic[tk] = per_topic.get(tk, 0) + 1
+        selected.append(d)
+        if len(selected) >= top_n:
+            break
+    # Backfill (by effective score) if the caps left us short.
+    if len(selected) < top_n:
+        chosen = {id(x) for x in selected}
+        for d in pool:
+            if id(d) not in chosen:
+                selected.append(d)
+                if len(selected) >= top_n:
+                    break
+    for d in selected:
+        d.pop("_eff", None)
+    return selected
+
+
 def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
                    window_days: int = 14) -> list[dict]:
-    """Top N papers on `side` within window, sorted by priority_score desc.
+    """Top N papers on `side` within window — recency-weighted + diversity-capped
+    (O2). Fetches a larger score-ranked pool, then rotates/diversifies anchors so
+    daily generation isn't anchored on the same few papers every run.
 
     Returns dicts with full extraction (l1 + l2 when available).
     """
     start = end_date - timedelta(days=window_days - 1)
-    with db.connect() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT p.id, p.title, p.abstract, p.publication_date, p.affiliations, p.url,
+    pool_limit = max(top_n * PAPER_POOL_MULT, top_n)
+    cols = """p.id, p.title, p.abstract, p.publication_date, p.affiliations, p.url,
                    p.arxiv_categories,
                    e.side, e.method_primary_json, e.domain_json, e.tags_json,
                    e.mechanism_description_json,
                    e.building_blocks_json, e.claims_json, e.benchmarks_json,
-                   s.priority_score, s.signals_json
-            FROM papers p
+                   s.priority_score, s.signals_json"""
+    where = f"""FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
             LEFT JOIN paper_signals s ON s.paper_id = p.id
             WHERE e.extraction_status IN ('l1_done', 'l2_done')
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
               AND date(p.publication_date) <= ?
-              AND {db.TRIGGER_ELIGIBILITY_GUARD}
-            ORDER BY s.priority_score DESC
-            LIMIT ?
-            """,
-            (side, start.isoformat(), end_date.isoformat(), top_n),
+              AND {db.TRIGGER_ELIGIBILITY_GUARD}"""
+    params = (side, start.isoformat(), end_date.isoformat())
+    with db.connect() as conn:
+        # Pool = high-score candidates ∪ most-recent candidates, so genuinely recent
+        # (often lower-scored) papers are eligible for the recency-reserved slots —
+        # not just the sticky top-by-score set.
+        by_score = conn.execute(
+            f"SELECT {cols} {where} ORDER BY s.priority_score DESC LIMIT ?",
+            (*params, pool_limit),
         ).fetchall()
+        by_recent = conn.execute(
+            f"SELECT {cols} {where} ORDER BY date(p.publication_date) DESC LIMIT ?",
+            (*params, max(top_n * 2, MIN_RECENT_SLOTS * 4)),
+        ).fetchall()
+    seen_ids: set = set()
+    rows = []
+    for r in list(by_score) + list(by_recent):
+        if r["id"] in seen_ids:
+            continue
+        seen_ids.add(r["id"])
+        rows.append(r)
 
-    out = []
+    pool = []
     for r in rows:
         d = dict(r)
         for k in ("method_primary", "domain", "tags",
@@ -64,8 +158,8 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
         d["signals"] = json.loads(d.pop("signals_json") or "{}")
         d["abstract_short"] = (d.get("abstract") or "")[:600]
         d["affiliation_top"] = (d.get("affiliations") or "").split(";")[0].strip()
-        out.append(d)
-    return out
+        pool.append(d)
+    return _select_diverse_recent(pool, top_n, end_date, window_days)
 
 
 def get_relevant_historical_mechanisms(
