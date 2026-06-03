@@ -1119,14 +1119,27 @@ def run_gap_pipeline(end_date: date | None = None,
     }
 
 
+def _soundness_key(item: dict) -> tuple:
+    """Rank by THEORETICAL SOUNDNESS first — theoretical_support is the average of
+    structural_homology / failure_mode_match / assumption_transferability /
+    identifiable_prediction / theoretical_anchors, i.e. how likely the transfer
+    actually holds and the experiment pans out. That (not novelty, not cheapness)
+    is what we surface first; total score breaks ties."""
+    sc = item.get("score", {}) or {}
+    return (sc.get("theoretical_support", 0) or 0, sc.get("total", 0) or 0)
+
+
 def select_email_experiments(accepted: list[dict],
                              limit: int = MAX_ENGINEERING_GAPS) -> list[dict]:
-    """Keep the daily email about immediately runnable, reviewed experiments."""
-    return [
+    """Keep the daily email about immediately runnable, reviewed experiments,
+    ordered by theoretical soundness (most likely to actually pan out first)."""
+    runnable = [
         item for item in accepted
         if item.get("type") == "engineering"
         and item.get("score", {}).get("passes_email_threshold")
-    ][:limit]
+    ]
+    runnable.sort(key=_soundness_key, reverse=True)
+    return runnable[:limit]
 
 
 def select_theoretical_leads(accepted: list[dict], email_ready: list[dict],
@@ -1153,7 +1166,7 @@ def select_theoretical_leads(accepted: list[dict], email_ready: list[dict],
         if item.get("type") == "theoretical"
         and _cand_key(item["gap"]) not in promoted
     ]
-    leads.sort(key=lambda it: it.get("score", {}).get("total", 0), reverse=True)
+    leads.sort(key=_soundness_key, reverse=True)   # soundest leads first, same as runnable
     return leads[:limit]
 
 
