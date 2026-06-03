@@ -11,6 +11,7 @@ Tables:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import sys
 from contextlib import contextmanager
@@ -20,6 +21,8 @@ from typing import Any
 
 from .config import load_settings
 
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers (
@@ -291,10 +294,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_membership
 """
 
 
+def _bootstrap_from_seed(db_path: Path) -> None:
+    """Self-bootstrap the paper corpus: if there is no live DB yet but a committed
+    seed snapshot exists, decompress it once. Lets a fresh clone / luyao4 cron start
+    with the ~5k-paper backfill (the corpus is the necessary tool to run AlphaGap)
+    without a manual data-copy step. Never overwrites an existing non-empty DB."""
+    if db_path.exists() and db_path.stat().st_size > 0:
+        return
+    seed = db_path.parent / "seed" / "alphagap-seed.sqlite.gz"
+    if not seed.is_file():
+        return
+    import gzip
+    import shutil
+    log.info("No live DB at %s — bootstrapping from seed %s", db_path, seed.name)
+    with gzip.open(seed, "rb") as fsrc, open(db_path, "wb") as fdst:
+        shutil.copyfileobj(fsrc, fdst)
+
+
 @contextmanager
 def connect(path: Path | None = None):
     db_path = path or load_settings().db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    _bootstrap_from_seed(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
