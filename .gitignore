@@ -33,3 +33,6 @@ logs/
 tmp/
 *.tmp
 gap_log.jsonl
+GAP-LOG.md
+CELL-COVERAGE.md
+pending_cells.jsonl

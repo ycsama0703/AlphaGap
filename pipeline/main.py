@@ -65,8 +65,12 @@ def run_daily(target_date: date | None = None,
     # critical path: daily output should spend time on runnable experiments.
     log.info("Step 2/5: experiment-first gap pipeline (04 + 05 + 06 + 07)")
     client = LLMClient()
+    # O1 — re-enable mechanism-family trends in daily so the 04A/04/05 prompts (which
+    # are designed around ai_trends) get the rising/emerging-mechanism diversity signal,
+    # not just the same top papers. Adds ~2 LLM calls/day; toggle via settings if budget bites.
     gap_result = gaps_mod.run_gap_pipeline(
         target_date, adversarial_review=s.adversarial_gap_review, client=client,
+        include_trends=getattr(s, "daily_include_trends", True),
     )
 
     # Record every generated gap in the unified ledger (mechanism-level, brand-free):
@@ -74,6 +78,14 @@ def run_daily(target_date: date | None = None,
     from .output import gap_log as gap_log_mod
     n_logged = gap_log_mod.append_run(target_date, gap_result)
     log.info("Gap ledger: logged %d gaps → gap_log.jsonl / GAP-LOG.md", n_logged)
+
+    # Refresh the cell coverage heatmap + queue any frontier new-cell proposals for review.
+    from . import cells as cells_mod
+    cells_mod.render_coverage()
+    n_pending = cells_mod.collect_pending(days=30, as_of=target_date)
+    cov = cells_mod.coverage()
+    log.info("Cell coverage: %d/%d cells used; %d new frontier cell-proposals queued for review",
+             cov["used_cells"], cov["total_cells"], n_pending)
 
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])

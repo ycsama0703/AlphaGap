@@ -78,6 +78,7 @@ def _anchor_ids(gap: dict) -> list[str]:
 def _row(run_date: str, item: dict, verdict: str) -> dict:
     gap = item.get("gap") or {}
     m = _mechanism_fields(gap)
+    fba = gap.get("field_boundary_alignment") or {}
     return {
         "date": run_date,
         "gap_id": gap.get("_id") or gap.get("gap_id") or "?",
@@ -85,6 +86,11 @@ def _row(run_date: str, item: dict, verdict: str) -> dict:
         "verdict": verdict,                       # email_ready | accepted | rejected | downgraded
         "field_id": m["field_id"],
         "mechanism_family": m["mechanism_family"],
+        # which cell of the opportunity grid this gap targets (for coverage + dedup);
+        # opportunity_mode tells grounded (existing cell) vs frontier (proposes a NEW cell).
+        "transfer_cell_id": fba.get("transfer_cell_id") or "",
+        "opportunity_mode": gap.get("opportunity_mode") or "",
+        "proposed_cell": gap.get("proposed_cell") or {},   # frontier_extension's new-cell proposal
         "ai_mechanism": m["ai_mechanism"][:160],  # functional, no brand
         "hypothesis": m["hypothesis"][:240],
         "anchor_paper_ids": _anchor_ids(gap),     # evidence only
