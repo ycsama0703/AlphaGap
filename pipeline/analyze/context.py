@@ -40,8 +40,14 @@ def _paper_topic_key(d: dict) -> str:
 
 
 def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
-                           window_days: int) -> list[dict]:
-    """Recency-weighted, diversity-capped selection from a scored pool."""
+                           window_days: int, exclude_ids: set | None = None) -> list[dict]:
+    """Recency-weighted, diversity-capped selection from a scored pool.
+
+    O3: papers in `exclude_ids` (anchored in the last few days) are deprioritized —
+    held back as last-resort backfill — so daily generation explores fresh papers
+    instead of re-anchoring the same ones. Soft, never returns fewer than available.
+    """
+    exclude_ids = exclude_ids or set()
     for d in pool:
         try:
             pub = date.fromisoformat(str(d.get("publication_date"))[:10])
@@ -50,6 +56,10 @@ def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
             age = window_days
         recency = 1.0 - min(age, window_days) / max(1, window_days)
         d["_eff"] = (d.get("priority_score") or 0.0) * (1.0 + RECENCY_WEIGHT * recency)
+    # Prefer not-recently-anchored papers; keep excluded as fallback for backfill.
+    fresh = [d for d in pool if d.get("id") not in exclude_ids]
+    stale = [d for d in pool if d.get("id") in exclude_ids]
+    pool = fresh
     selected: list[dict] = []
     per_aff: dict[str, int] = {}
     per_topic: dict[str, int] = {}
@@ -87,12 +97,14 @@ def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
         selected.append(d)
         if len(selected) >= top_n:
             break
-    # Backfill (by effective score) if the caps left us short.
+    # Backfill (by effective score) if the caps left us short — fresh first, then
+    # fall back to recently-anchored (stale) papers only if still short.
     if len(selected) < top_n:
         chosen = {id(x) for x in selected}
-        for d in pool:
+        for d in pool + sorted(stale, key=lambda d: -d.get("_eff", 0.0)):
             if id(d) not in chosen:
                 selected.append(d)
+                chosen.add(id(d))
                 if len(selected) >= top_n:
                     break
     for d in selected:
@@ -101,7 +113,7 @@ def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
 
 
 def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
-                   window_days: int = 14) -> list[dict]:
+                   window_days: int = 14, exclude_ids: set | None = None) -> list[dict]:
     """Top N papers on `side` within window — recency-weighted + diversity-capped
     (O2). Fetches a larger score-ranked pool, then rotates/diversifies anchors so
     daily generation isn't anchored on the same few papers every run.
@@ -159,7 +171,7 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
         d["abstract_short"] = (d.get("abstract") or "")[:600]
         d["affiliation_top"] = (d.get("affiliations") or "").split(";")[0].strip()
         pool.append(d)
-    return _select_diverse_recent(pool, top_n, end_date, window_days)
+    return _select_diverse_recent(pool, top_n, end_date, window_days, exclude_ids=exclude_ids)
 
 
 def get_relevant_historical_mechanisms(

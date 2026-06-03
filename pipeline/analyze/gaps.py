@@ -31,6 +31,7 @@ MAX_ENGINEERING_GAPS = 2
 ENGINEERING_EXPANSION_MAX_TOKENS = 32768
 ENGINEERING_REPAIR_MAX_TOKENS = 32768
 MAX_FRONTIER_CANDIDATES_SELECTED = 1
+DEDUP_LOOKBACK_DAYS = 7   # O3: exclude anchors / show recent mechanisms from last N days
 GROUNDED_TRANSFER = "grounded_transfer"
 FRONTIER_EXTENSION = "frontier_extension"
 
@@ -56,7 +57,18 @@ def build_gap_context(end_date: date | None = None,
         wd_ai = window_days_ai if window_days_ai is not None else trends_mod.WINDOW_DAYS_AI
         wd_fin = window_days_fin if window_days_fin is not None else trends_mod.WINDOW_DAYS_FIN
 
-    ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=wd_ai)
+    # O3 — don't re-anchor papers used in the last few days' gaps (explore the pool),
+    # and show the model the mechanisms already proposed recently (brand-free) so it
+    # avoids / differentiates rather than re-proposing the same transfer.
+    from ..output import gap_log as gap_log_mod
+    recent_anchor_ids = gap_log_mod.recent_anchor_ids(DEDUP_LOOKBACK_DAYS, as_of=end)
+    recently_proposed = [
+        {k: s.get(k) for k in ("field_id", "mechanism_family", "ai_mechanism",
+                               "hypothesis", "verdict", "date")}
+        for s in gap_log_mod.recent_signatures(DEDUP_LOOKBACK_DAYS, as_of=end)
+    ]
+    ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=wd_ai,
+                                           exclude_ids=recent_anchor_ids)
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     mappings = ctx_builder.load_existing_mappings()
     all_fin_field_boundaries = ctx_builder.load_fin_field_notes()
@@ -116,6 +128,7 @@ def build_gap_context(end_date: date | None = None,
         "ai_innovation_playbook": ai_innovation_playbook,
         "trends_included": include_trends,
         "fin_uptake": fin_uptake,    # ← Tier 1.1: hard negative-evidence ground truth
+        "recently_proposed": recently_proposed,  # ← O3: mechanisms proposed in last N days (brand-free)
         # raw refs for downstream validation
         "_valid_ai_ids": {p["id"] for p in ai_papers} | {
             p["id"] for p in historical_ai_mechanisms
@@ -157,6 +170,7 @@ def enumerate_candidates(context: dict, client: LLMClient | None = None) -> list
         fin_transfer_cells_json=json.dumps(context.get("fin_transfer_cells", []), ensure_ascii=False, indent=2),
         ai_innovation_playbook=context.get("ai_innovation_playbook", ""),
         fin_uptake_json=json.dumps(context.get("fin_uptake", {}), ensure_ascii=False, indent=2),
+        recently_proposed_json=json.dumps(context.get("recently_proposed", []), ensure_ascii=False, indent=2),
     )
     try:
         result = client.chat_json(

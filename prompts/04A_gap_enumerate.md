@@ -88,6 +88,12 @@
 {ai_innovation_playbook}
 【Active Fin transfer cells（grounded_transfer 的正式实验锚点；frontier_extension 可提出缺失的新 cell）】 {fin_transfer_cells_json}
 【Fin 侧关键词命中次数 (fin_uptake)】 {fin_uptake_json}
+【最近 N 天已提过的 gap（机制层、brand-free）——避免重复,或必须明确差异化】
+{recently_proposed_json}
+对每条已提过的方向,看它的 field_id + mechanism_family + ai_mechanism（功能描述,非品牌名）:
+- 不要再提机制上等价的候选（换个论文/品牌名不算新）。
+- 只有当你的候选在【失败模式 / 干预机制 / 实验锚点】上明确不同时才可提出,并让 one_liner 体现差异。
+- 优先探索这些方向【没覆盖到】的 field / mechanism family。
 
 输出严格 JSON：
 {
