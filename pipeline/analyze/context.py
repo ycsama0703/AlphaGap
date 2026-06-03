@@ -473,13 +473,21 @@ def load_experiment_findings(bank_path: Path | None = None) -> list[dict]:
         if status in (None, "untested"):   # inconclusive runs aren't findings about the gap
             continue
         gap_id = md.get("gap_id", "?")
+        # mechanism-level (brand-free) keys; fall back to the experiment title only
+        # if the bank entry predates the mechanism fields.
+        ai_mech = md.get("ai_mechanism") or e.get("title", "")
+        fin_mech = md.get("fin_mechanism") or md.get("mechanism_family") or md.get("field_id") or ""
         out.append({
             "id": f"EXP-{gap_id}",
             "status": status,                       # validated / partially_explored / refuted
-            "ai_concept": e.get("title", ""),
-            "ai_mechanism": e.get("title", ""),
-            "fin_concept": md.get("mechanism_family") or md.get("field_id") or "",
-            "fin_structure": md.get("mechanism_family") or md.get("field_id") or "",
+            "ai_concept": ai_mech,
+            "ai_mechanism": ai_mech,
+            "fin_concept": fin_mech,
+            "fin_structure": fin_mech,
+            "field_id": md.get("field_id", ""),
+            "mechanism_family": md.get("mechanism_family", ""),
+            "cost_level": md.get("cost_level", ""),         # feeds cheap-gap selection
+            "findata_native": md.get("findata_native"),
             "notes": (e.get("content", "") or "")[:300],
             "source": "experiment",
             "source_gap_id": gap_id,
