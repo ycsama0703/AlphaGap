@@ -85,7 +85,9 @@ def build_gap_context(end_date: date | None = None,
              len(ai_main), len(conf_lookback), fresh_recent,
              " — THIN day" if conf_n > ctx_builder.CONF_LOOKBACK_BASE else "")
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
-    mappings = ctx_builder.load_existing_mappings()
+    # Literature-derived mappings + experiment-derived findings (ACCUMULATE → DISCOVER:
+    # dedup against directions we have actually tested, especially refuted ones).
+    mappings = ctx_builder.load_existing_mappings() + ctx_builder.load_experiment_findings()
     all_fin_field_boundaries = ctx_builder.load_fin_field_notes()
     all_fin_transfer_cells = ctx_builder.load_fin_transfer_cells()
     ai_innovation_playbook = ctx_builder.load_ai_innovation_playbook()

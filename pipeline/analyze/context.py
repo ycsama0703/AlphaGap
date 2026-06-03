@@ -445,6 +445,50 @@ def load_existing_mappings(mappings_dir: Path | None = None) -> list[dict]:
     return out
 
 
+def load_experiment_findings(bank_path: Path | None = None) -> list[dict]:
+    """ACCUMULATE → DISCOVER feedback: read experiment-derived findings from the
+    findings-bank (a kind=agent `bank.jsonl`) and project them into the same mapping
+    shape as literature mappings, so DISCOVER dedups against directions WE have
+    actually tested (esp. refuted ones). Degrades to [] if no bank is present.
+
+    Path: env ALPHAGAP_FINDINGS_BANK, else ~/.xp/findings/bank.jsonl.
+    """
+    import os
+    bank = bank_path or Path(
+        os.environ.get("ALPHAGAP_FINDINGS_BANK", str(Path.home() / ".xp/findings/bank.jsonl"))
+    )
+    if not bank.is_file():
+        return []
+    out = []
+    for line in bank.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        md = e.get("metadata", {})
+        status = md.get("status")
+        if status in (None, "untested"):   # inconclusive runs aren't findings about the gap
+            continue
+        gap_id = md.get("gap_id", "?")
+        out.append({
+            "id": f"EXP-{gap_id}",
+            "status": status,                       # validated / partially_explored / refuted
+            "ai_concept": e.get("title", ""),
+            "ai_mechanism": e.get("title", ""),
+            "fin_concept": md.get("mechanism_family") or md.get("field_id") or "",
+            "fin_structure": md.get("mechanism_family") or md.get("field_id") or "",
+            "notes": (e.get("content", "") or "")[:300],
+            "source": "experiment",
+            "source_gap_id": gap_id,
+            "source_brief": md.get("brief_path", ""),
+            "updated_at": md.get("stamped_at", ""),
+        })
+    return out
+
+
 # ---------- Fin field boundary notes ----------
 
 def load_fin_field_notes(fields_dir: Path | None = None) -> list[dict]:
