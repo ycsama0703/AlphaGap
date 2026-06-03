@@ -67,8 +67,22 @@ def build_gap_context(end_date: date | None = None,
                                "hypothesis", "verdict", "date")}
         for s in gap_log_mod.recent_signatures(DEDUP_LOOKBACK_DAYS, as_of=end)
     ]
-    ai_papers = ctx_builder.get_top_papers("ai", end, top_n=ai_top, window_days=wd_ai,
-                                           exclude_ids=recent_anchor_ids)
+    # Conference look-back: blend in a few peer-reviewed conf papers every day (quality +
+    # topic breadth), MORE on thin-inflow days. Replaces some fresh slots, not added on top.
+    fresh_recent = ctx_builder.count_fresh_eligible("ai", end)
+    conf_n = ctx_builder.CONF_LOOKBACK_BASE + (
+        ctx_builder.CONF_LOOKBACK_THIN_BONUS
+        if fresh_recent < ctx_builder.CONF_THIN_FRESH_THRESHOLD else 0)
+    conf_n = max(0, min(conf_n, ai_top - 5))   # always leave room for fresh anchors
+    ai_main = ctx_builder.get_top_papers("ai", end, top_n=ai_top - conf_n, window_days=wd_ai,
+                                         exclude_ids=recent_anchor_ids)
+    conf_lookback = ctx_builder.get_conference_lookback(
+        end, conf_n, side="ai",
+        exclude_ids=recent_anchor_ids | {p["id"] for p in ai_main})
+    ai_papers = ai_main + conf_lookback
+    log.info("AI anchors: %d fresh + %d conference look-back (fresh_recent=%d%s)",
+             len(ai_main), len(conf_lookback), fresh_recent,
+             " — THIN day" if conf_n > ctx_builder.CONF_LOOKBACK_BASE else "")
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     mappings = ctx_builder.load_existing_mappings()
     all_fin_field_boundaries = ctx_builder.load_fin_field_notes()

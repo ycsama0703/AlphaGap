@@ -157,7 +157,13 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
         seen_ids.add(r["id"])
         rows.append(r)
 
-    pool = []
+    pool = _project_paper_rows(rows)
+    return _select_diverse_recent(pool, top_n, end_date, window_days, exclude_ids=exclude_ids)
+
+
+def _project_paper_rows(rows) -> list[dict]:
+    """Row → paper dict (parse JSON columns, normalize mechanism, derive helpers)."""
+    out = []
     for r in rows:
         d = dict(r)
         for k in ("method_primary", "domain", "tags",
@@ -170,8 +176,76 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
         d["signals"] = json.loads(d.pop("signals_json") or "{}")
         d["abstract_short"] = (d.get("abstract") or "")[:600]
         d["affiliation_top"] = (d.get("affiliations") or "").split(";")[0].strip()
-        pool.append(d)
-    return _select_diverse_recent(pool, top_n, end_date, window_days, exclude_ids=exclude_ids)
+        out.append(d)
+    return out
+
+
+# Conference look-back: every day, blend in a few peer-reviewed conference papers
+# (ICLR/NeurIPS via OpenReview) as anchors — high quality + topic breadth the HF-daily
+# stream lacks — and MORE of them on thin-inflow days. These are stored as evidence
+# (eligible_for_daily_trigger=0), so we deliberately bypass the trigger guard for a
+# controlled quota. Tunables — review freely.
+CONF_LOOKBACK_BASE = 3        # blended in every day
+CONF_LOOKBACK_THIN_BONUS = 6  # extra when fresh inflow is thin
+CONF_THIN_FRESH_THRESHOLD = 8 # "thin day" = fewer than this many fresh eligible papers (3d)
+
+
+def count_fresh_eligible(side: str, end_date: date, *, lookback_days: int = 3) -> int:
+    """How many trigger-eligible `side` papers were published in the last few days —
+    the signal for whether today is a 'thin' day that needs more conference look-back."""
+    start = (end_date - timedelta(days=lookback_days - 1)).isoformat()
+    with db.connect() as conn:
+        return conn.execute(
+            f"""SELECT count(*) FROM papers p
+                JOIN paper_extractions e ON e.paper_id = p.id
+                LEFT JOIN paper_signals s ON s.paper_id = p.id
+                WHERE e.extraction_status IN ('l1_done','l2_done')
+                  AND (e.side = ? OR e.side = 'both')
+                  AND date(p.publication_date) >= ? AND date(p.publication_date) <= ?
+                  AND {db.TRIGGER_ELIGIBILITY_GUARD}""",
+            (side, start, end_date.isoformat()),
+        ).fetchone()[0]
+
+
+def get_conference_lookback(end_date: date, n: int, *, side: str = "ai",
+                            exclude_ids: set | None = None) -> list[dict]:
+    """Peer-reviewed conference papers (OpenReview) as look-back anchors. Bypasses the
+    trigger guard (these are evidence-tier), excludes recently-anchored, rotates by
+    recency, and diversity-caps by topic."""
+    if n <= 0:
+        return []
+    exclude_ids = exclude_ids or set()
+    with db.connect() as conn:
+        rows = conn.execute(
+            f"""SELECT p.id, p.title, p.abstract, p.publication_date, p.affiliations, p.url,
+                       p.arxiv_categories,
+                       e.side, e.method_primary_json, e.domain_json, e.tags_json,
+                       e.mechanism_description_json,
+                       e.building_blocks_json, e.claims_json, e.benchmarks_json,
+                       s.priority_score, s.signals_json
+                FROM paper_sources ps
+                JOIN papers p ON p.id = ps.paper_id
+                JOIN paper_extractions e ON e.paper_id = p.id
+                LEFT JOIN paper_signals s ON s.paper_id = p.id
+                WHERE ps.source = 'openreview'
+                  AND e.extraction_status IN ('l1_done','l2_done')
+                  AND (e.side = ? OR e.side = 'both')
+                ORDER BY date(p.publication_date) DESC
+                LIMIT ?""",
+            (side, max(n * 8, 40)),
+        ).fetchall()
+    pool = [d for d in _project_paper_rows(rows) if d.get("id") not in exclude_ids]
+    selected, per_topic = [], {}
+    for d in pool:
+        tk = _paper_topic_key(d)
+        if per_topic.get(tk, 0) >= 2:
+            continue
+        per_topic[tk] = per_topic.get(tk, 0) + 1
+        d["is_conference"] = True  # mark peer-reviewed look-back for downstream/prompt
+        selected.append(d)
+        if len(selected) >= n:
+            break
+    return selected
 
 
 def get_relevant_historical_mechanisms(
@@ -677,6 +751,8 @@ def paper_for_prompt(p: dict) -> dict:
         "claims": p.get("claims", []),
         "affiliation_top": p.get("affiliation_top") or "",
         "score": round(p.get("priority_score") or 0.0, 1),
+        # peer-reviewed conference look-back — high signal; the model should weight these.
+        "peer_reviewed_conference": bool(p.get("is_conference")),
     }
 
 
