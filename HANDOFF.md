@@ -63,6 +63,33 @@ The "把 pipeline 跑通" goal is done. Two drivers in `~/Desktop/staged-experim
 - findata caveat: the harness accessor defaults to `limit=750` (last ~3y); pass `limit=3000` to get
   full 2015-2024 daily history.
 
+## TEST experiment scaffold — shape-templates (2026-06-04)
+Goal: stop hand-writing ~200 lines of rails per experiment. Built a 3-layer design in
+`~/Desktop/staged-experiment-runner/harness/templates/` (NB: that repo is NOT git locally;
+published to xp.io separately):
+- **Layer 1 — harness (`Experiment`)**: universal rigor rails (split discipline, sealed
+  holdout consumed once, gates on train/val, DSR, conclusion card). Every experiment uses it.
+- **Layer 2 — shape-templates** (a small family, keyed by experiment SHAPE not by gap):
+  - `portfolio.run_monthly_portfolio_experiment` — monthly-rebalance findata portfolio gaps
+    (returns → weights → Sharpe/return/VaR-violation). Author supplies: universe, splits,
+    trailing_window, a Phase-0 PRECONDITION fn, baseline weight fn, intervention weight fn,
+    metric + holdout_threshold + n_trials.
+  - `predictive.run_predictive_signal_experiment` — does-X-predict-Y gaps (data-AGNOSTIC;
+    rank-IC / AUROC). Author supplies: a Phase-0 precondition, an `evaluate(exp, split)->(metric,detail)`,
+    metric + holdout_threshold.
+- **Layer 3 — `toolbox`**: shared metrics (ann_sharpe/ann_return/var_violation/rank_ic/auroc/
+  cohens_d), weight baselines (equal_weight/inverse_vol/mvo), preconditions (vol_rank_persistence),
+  findata monthly-panel loader (`load_monthly_panel`, passes limit=3000).
+- **Escape hatch**: a structurally-novel gap → write bespoke directly on `Experiment` (Layer 1),
+  same as the two original example scripts. Templates are a fast path, not the only path. The
+  agent ROUTES per gap (fits a shape → ~25-line config; else → bespoke); structure/data diversity
+  is irreducible and is NOT templated.
+- A fitting gap is now a **~25-line config** (examples/low_vol_v2_templated.py, momentum_ic_predictive.py).
+- Validated: portfolio template reproduced the bespoke low-vol run EXACTLY (refuted, edge -0.2154,
+  DSR 0.82); predictive template walked full rails on momentum→return IC → confirmed (holdout IC +0.098).
+- Template-validation runs are NOT ingested to the bank (kept clean: bank stays at 4 real findings).
+- Pending: the agent-side "read brief → pick shape → fill config" routing is still manual.
+
 ## Deployment state
 - ✅ GitHub: pushed (`cae986d`, 15 commits this session).
 - ✅ luyao4: `git pull` + dry-run validated in the cron venv — $0.0890, **2 runnable
