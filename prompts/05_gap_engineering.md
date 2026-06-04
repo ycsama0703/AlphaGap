@@ -94,19 +94,20 @@
    - metrics: 主指标 + 次指标（≥ 2 个，量化）；每个指标说明 success_criterion 或 purpose
    - baselines: ≥ 2 个对比方法；说明对比目的。若 baseline 是输入论文中已有的工作，必须附 citation 与其精确 paper_id，pipeline 会据此回填可点击 URL；不在输入中的论文将 paper_id 填 null，绝不编造 id 或链接
    - ablations: ≥ 1 个消融实验；说明被检验的组件作用
-   - compute_profile: 算力 / API / 运行资源画像（只作执行信息，不代表 gap 质量，不参与评分）
-     * tier: "low" | "medium" | "high" | "very_high"
+   - compute_profile: 执行成本画像（**按 AI agent + 自动化 harness 执行来估，不是人月**；不参与评分）
+     执行者是 AI（写代码几分钟、跑实验秒~分钟级），所以**不要用"人天/人月"**，只用下面三个真实轴：
+     * 【算力】tier: "low" | "medium" | "high" | "very_high"
        - low: 本地 CPU / 普通服务器即可；回归、树模型、传统 ML、少量 backtest
        - medium: 单张 GPU 或较多 LLM API 调用；小型神经网络、embedding、LLM judge loop
        - high: 多 GPU、长训练、大规模 RL/Transformer、LLM fine-tuning
        - very_high: 大模型预训练、复杂 RLHF、HPC、大规模市场仿真
      * requirements: 字符串数组，如 ["cpu"], ["single_gpu"], ["llm_api"], ["llm_finetune"], ["multi_gpu"]
-     * estimated_runtime: 如 "数小时", "1-3 天", "1-2 周"
+     * run_wallclock: **机器**跑完一轮的墙钟时间（不是人工时），如 "几分钟 (CPU)", "~2 GPU-hours", "~6h (单 GPU)"
+     * 【API$】api_cost_usd: 跑完整个实验预计的 LLM API 美元成本（数字，如 2、150；纯统计/回测无 LLM 调用填 0）
+     * 【数据】findata_native: true/false —— 整个实验（不只 Phase 0）能否仅靠 findata / 自包含数据跑通
+     * data_build: 若 findata_native=false，**要先建什么数据/基建**（这才是真·拦路虎，对 AI 也一样），如 "需自建带标注的因子回测语料 ~5000 条" / "需搭多 agent harness + RL 训练管线"；findata_native=true 则填 "none (findata)"
      * main_bottleneck: 主要瓶颈，如 "数据清洗", "LLM API 成本", "GPU 训练"
-     * summary: 一句话说明资源要求
-     * fallback: 低算力替代方案，如 "先用线性模型 / 小样本 / API judge 验证机制"
-     * findata_native: true/false —— 整个实验（不只 Phase 0）能否仅靠 findata / 自包含数据跑通；若需 WRDS / CRSP / Compustat / 自建回测语料等外部数据则填 false。这是给人"几天能跑 vs 要先建数据"的可行性判断，不参与评分。
-   - estimated_effort: 人月估计（如 "2-3 个月 / 1 人"）
+     * fallback: 低成本替代方案，如 "先用线性模型 / 小样本 / API judge 验证机制"
    - key_risks: 1-3 条可能踩坑（数据可得性、训练成本、方法适配性）
    - anchor_papers: ai 和 fin 侧各自的锚定论文
 3. 必须避免：
@@ -189,13 +190,13 @@
     "compute_profile": {
       "tier": "medium",
       "requirements": ["cpu", "llm_api"],
-      "estimated_runtime": "1-3 天 / 1000 个候选因子",
+      "run_wallclock": "~2-4h / 1000 个候选因子 (CPU 回测 + LLM verifier 调用)",
+      "api_cost_usd": 30,
       "main_bottleneck": "LLM verifier API 成本与因子回测数据清洗",
-      "summary": "回测本身 CPU 可跑，主要新增成本来自多轮 LLM verifier 调用",
       "fallback": "先用 100 个候选因子 + 小模型/API judge 验证 verifier 是否有预测力",
-      "findata_native": false
+      "findata_native": false,
+      "data_build": "需自建带 verifier 标注的因子-回测语料 ~1000 条（CRSP/Compustat 点回溯）"
     },
-    "estimated_effort": "2-3 个月 / 1 人",
     "key_risks": [
       "verifier 可能过拟合训练期因子分布，OOS 泛化差",
       "Economic intuition 的 prompt 工程是关键，需多轮 tuning",
@@ -305,12 +306,13 @@ Schema:
         "compute_profile": {
           "tier": "low" | "medium" | "high" | "very_high",
           "requirements": [string],
-          "estimated_runtime": string,
+          "run_wallclock": string,
+          "api_cost_usd": number,
           "main_bottleneck": string,
-          "summary": string,
-          "fallback": string
+          "fallback": string,
+          "findata_native": boolean,
+          "data_build": string
         },
-        "estimated_effort": string,
         "key_risks": [string]
       },
       "anchor_papers": {

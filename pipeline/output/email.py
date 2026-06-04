@@ -295,33 +295,39 @@ def _ai_anchor_link(g: dict, gtype: str) -> str:
 
 
 def _feasibility_verdict(g: dict):
-    """Crisp triage verdict from structured fields (findata-native? compute? time?).
-    Returns (emoji, color, text) or None when there's no roadmap/compute data (e.g.
-    theoretical leads). Purely human-facing at-a-glance — never gates or scores."""
+    """Crisp triage verdict in AI-EXECUTOR units — API$ + compute + does-the-data-exist
+    (NOT person-time; the executor is an agent, wall-clock is minutes). Returns
+    (emoji, color, text) or None when there's no roadmap (e.g. theoretical leads).
+    Purely human-facing at-a-glance — never gates or scores."""
     rm = g.get("experimental_roadmap") or {}
     cp = rm.get("compute_profile") or {}
     native = cp.get("findata_native")
     tier = (cp.get("tier") or "").lower()
-    effort = str(rm.get("estimated_effort") or cp.get("estimated_runtime") or "")
-    if native is None and not tier and not effort:
+    api = cp.get("api_cost_usd")
+    wall = cp.get("run_wallclock") or cp.get("estimated_runtime") or ""
+    build = cp.get("data_build") or ""
+    if native is None and not tier and api is None and not wall:
         return None
-    months = any(k in effort for k in ("月", "month"))
-    weeks = any(k in effort for k in ("周", "week"))
-    if native is False or tier in ("high", "very_high") or months:
+    big_api = isinstance(api, (int, float)) and api >= 200
+    mid_api = isinstance(api, (int, float)) and api >= 20
+    # heavy = needs a bespoke data/infra build, or high compute, or big API spend
+    if native is False or tier in ("high", "very_high") or big_api:
         emoji, color = "🔴", "#c0392b"
-    elif tier == "medium" or weeks:
+    elif tier == "medium" or mid_api:
         emoji, color = "🟡", "#b07000"
     else:
         emoji, color = "🟢", "#0a6e3d"
     bits = []
-    if native is True:
-        bits.append("findata 原生")
-    elif native is False:
-        bits.append("需外部数据")
+    if api is not None:
+        bits.append(f"💰 ~${_e(api)} API")
     if tier:
-        bits.append(f"compute {tier}")
-    if effort:
-        bits.append(effort)
+        bits.append(f"🖥 {_e(tier)}" + (f" · {_e(wall)}" if wall else ""))
+    elif wall:
+        bits.append(f"🖥 {_e(wall)}")
+    if native is True:
+        bits.append("📊 findata 原生")
+    elif native is False:
+        bits.append("📊 需先建数据: " + _e(build or "外部语料"))
     return emoji, color, " · ".join(bits) or "?"
 
 
@@ -498,7 +504,6 @@ def _engineering_roadmap_html(roadmap: dict) -> str:
     ablations = roadmap.get("ablations") or []
     compute = roadmap.get("compute_profile") or {}
     risks = roadmap.get("key_risks") or []
-    effort = roadmap.get("estimated_effort", "?")
 
     out = [
         "<div style='margin:16px 0 8px;border-top:1px solid #e5e7eb;padding-top:14px;'>",
@@ -509,7 +514,7 @@ def _engineering_roadmap_html(roadmap: dict) -> str:
         _metrics_panel(metrics),
         _comparison_panel(baselines, ablations),
     ]
-    out.append(_feasibility_strip(effort, compute, risks))
+    out.append(_feasibility_strip(compute, risks))
     out.append("</div>")
     return "\n".join(out)
 
@@ -653,18 +658,25 @@ def _inline_items(items: object) -> str:
     return str(items or "?")
 
 
-def _feasibility_strip(effort: object, compute: dict, risks: list) -> str:
+def _feasibility_strip(compute: dict, risks: list) -> str:
+    """Detailed cost line in AI-executor units (API$ + compute + data), not person-time."""
     requirements = compute.get("requirements") or []
     if isinstance(requirements, str):
         requirements = [requirements]
     resource = ", ".join(str(value) for value in requirements) or "?"
     risk_text = "; ".join(str(value) for value in list(risks)[:2]) or "?"
+    api = compute.get("api_cost_usd")
+    wall = compute.get("run_wallclock") or compute.get("estimated_runtime", "?")
+    native = compute.get("findata_native")
+    data = ("findata-native" if native is True
+            else (f"needs build: {compute.get('data_build', 'external corpus')}" if native is False
+                  else "?"))
     return (
         "<div style='margin:10px 0 0;padding:9px 12px;border-left:3px solid #94a3b8;"
         "background:#f8fafc;color:#475569;font-size:12px;line-height:1.55;'>"
         "<b style='color:#334155;'>Feasibility</b>"
-        f" · effort {_e(effort)} · compute {_e(compute.get('tier', '?'))}"
-        f" ({_e(resource)}) · runtime {_e(compute.get('estimated_runtime', '?'))}"
+        f" · 💰 ~${_e(api) if api is not None else '?'} API · 🖥 {_e(compute.get('tier', '?'))}"
+        f" ({_e(resource)}) · {_e(wall)} · 📊 {_e(data)}"
         f"<br><b style='color:#334155;'>Watch-outs</b> · {_e(risk_text)}"
         "</div>"
     )

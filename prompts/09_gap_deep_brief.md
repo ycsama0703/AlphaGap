@@ -57,7 +57,7 @@ markdown 结构使用以下 H2 (##) 章节，顺序固定：
 这个 Fin 子领域有几个学派？本 gap 落在哪里？与每个学派的差异化定位。
 
 ## 5. Where to Start (Reading + Replication Order)
-认知路径：先读什么 → 复现什么 baseline → 第一个真实验。单独写 Compute / Runtime。
+认知路径：先读什么 → 复现什么 baseline → 第一个真实验。单独写 Compute / Runtime——**按 AI agent 执行口径**（API$、机器墙钟分钟/GPU 小时、数据在不在），**不要写"人天/人月"**。
 
 ## 6. The True Contribution
 (a) Empirical (b) Methodological (c) Theoretical。不要写"提升 X% Sharpe"。
@@ -93,7 +93,7 @@ Phase 1（无干预 baseline）→ Phase 2（干预对比）→ Phase 3（ablati
 每阶段：要回答什么问题、Go/No-Go 判据、资源需求。
 **Selection ≠ verdict**：每个 Phase 1-3 的 go/no-go 判据只能在 train/validation 数据上计算，**不得**引用 §9 的 locked holdout。holdout 只在最终 verdict（CONCLUDE）时消费一次，以避免在测试信号上做选择（自治系统中实测会膨胀 9-13pp）。
 标注每个 phase 的数据落在哪个 split（train / validation / —— 绝不碰 holdout）。
-最后给出总时间、总 API 成本、算力需求、主要瓶颈。
+最后给出执行成本(**AI agent 口径,不是人月**)：**总 API 成本($)** · **算力(CPU 分钟 / GPU 小时,机器墙钟)** · **数据是否 findata 原生(否则要先建什么)** · 主要瓶颈。
 
 ---
 

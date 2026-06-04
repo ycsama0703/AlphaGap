@@ -386,27 +386,32 @@ def _ai_anchor_link_md(g: dict, gtype: str) -> str:
 
 
 def _feasibility_verdict_md(g: dict) -> str:
-    """Crisp triage verdict (findata-native? compute? time?). Empty when no roadmap."""
+    """Crisp triage verdict in AI-executor units — API$ + compute + data-exists
+    (not person-time). Empty when no roadmap."""
     rm = g.get("experimental_roadmap") or {}
     cp = rm.get("compute_profile") or {}
     native = cp.get("findata_native")
     tier = (cp.get("tier") or "").lower()
-    effort = str(rm.get("estimated_effort") or cp.get("estimated_runtime") or "")
-    if native is None and not tier and not effort:
+    api = cp.get("api_cost_usd")
+    wall = cp.get("run_wallclock") or cp.get("estimated_runtime") or ""
+    build = cp.get("data_build") or ""
+    if native is None and not tier and api is None and not wall:
         return ""
-    months = any(k in effort for k in ("月", "month"))
-    weeks = any(k in effort for k in ("周", "week"))
-    emoji = "🔴" if (native is False or tier in ("high", "very_high") or months) else (
-        "🟡" if (tier == "medium" or weeks) else "🟢")
+    big_api = isinstance(api, (int, float)) and api >= 200
+    mid_api = isinstance(api, (int, float)) and api >= 20
+    emoji = "🔴" if (native is False or tier in ("high", "very_high") or big_api) else (
+        "🟡" if (tier == "medium" or mid_api) else "🟢")
     bits = []
-    if native is True:
-        bits.append("findata 原生")
-    elif native is False:
-        bits.append("需外部数据")
+    if api is not None:
+        bits.append(f"💰 ~${api} API")
     if tier:
-        bits.append(f"compute {tier}")
-    if effort:
-        bits.append(effort)
+        bits.append(f"🖥 {tier}" + (f" · {wall}" if wall else ""))
+    elif wall:
+        bits.append(f"🖥 {wall}")
+    if native is True:
+        bits.append("📊 findata 原生")
+    elif native is False:
+        bits.append("📊 需先建数据: " + (build or "外部语料"))
     return f"{emoji} {' · '.join(bits) or '?'}"
 
 
@@ -539,12 +544,9 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
             compute = roadmap.get("compute_profile") or {}
             compute_summary = compute_profile_summary(compute)
             if compute_summary:
-                head += f"\n**Compute**: {compute_summary}\n"
-                if compute.get("summary"):
-                    head += f"- summary: {compute['summary']}\n"
+                head += f"\n**Cost (AI-executor: API$ · compute · data)**: {compute_summary}\n"
                 if compute.get("fallback"):
                     head += f"- fallback: {compute['fallback']}\n"
-            head += f"\n**Effort**: {roadmap.get('estimated_effort', '?')}\n"
             risks = roadmap.get("key_risks", []) or []
             if risks:
                 head += "\n**Risks**:\n"
