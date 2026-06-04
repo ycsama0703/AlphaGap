@@ -1,6 +1,6 @@
 # AlphaGap — Handoff (last updated 2026-06-04)
 
-> Living handoff: where the project is, what shipped, what's pending. Read this first.
+> Living handoff (updated 2026-06-04, TEST pipeline proven end-to-end). Where the project is, what shipped, what's pending. Read this first.
 
 ## TL;DR
 AlphaGap is the **DISCOVER** stage of an AI×Fin auto-research loop:
@@ -38,6 +38,31 @@ Distribution / bootstrap:
   `db.connect()` auto-decompresses when no live DB (idempotent). Both repos (plan A).
 - README Quickstart for a fresh deploy.
 
+## TEST pipeline — PROVEN end-to-end on real findata (2026-06-04)
+The "把 pipeline 跑通" goal is done. Two drivers in `~/Desktop/staged-experiment-runner/examples/`
+(runs/ + cards gitignored):
+- **portfolio_dro.py** — the 2026-06-03 ENG-2 Distributionally-Robust Allocation gap (CRC→VaR;
+  anchor `openreview:bt4Ahpemmi` via the conf look-back). Faithful-minimal (historical bootstrap
+  not GARCH; CVaR LP not soft-sort; 30 large-caps). **REFUTED at Phase-0** — the CVaR-robust
+  portfolio was *riskier* OOS than plain MVO (21.7% vs 17.4% breach of −8%/mo); the naive bootstrap
+  underestimates the OOS tail (the gap's own flagged risk). LP feasible (infeasible_rate=0 — a real
+  result, not a fallback bug). Needs GARCH → that's the cheap Phase-0 kill working as designed.
+- **low_vol_anomaly.py** — low-volatility anomaly (inverse-vol vs equal-weight). **Walked the FULL
+  rails**: Phase-0 precondition (vol rank-persistence 0.93 ✓) → Phase-1 EW baseline → Phase-2 iv beats
+  ew on val (+0.02) → CONCLUDE on the sealed holdout once: iv ann.Sharpe 1.52 vs ew 1.73 → edge −0.22
+  (bar +0.20), **DSR 0.82 < 0.95 → REFUTED**. Textbook stable-vs-lucky: the tiny val edge was noise;
+  the holdout (consumed once) caught the in-sample mirage.
+- Findings bank now has **4 real findings** (confirmed 1 / partial 1 / refuted 2; factor_investing +
+  portfolio_optimization). Both runs honest, NO p-hacking (params set on first principles before
+  opening the holdout, locked). DEMONSTRATED BOTH rails behaviours: cheap Phase-0 kill (DRO) AND a
+  full walk to holdout+DSR (low-vol).
+- **Lesson (see feedback_phase0_precondition_not_return):** Phase-0 must be a CHEAP precondition /
+  signal-separability check (e.g. "is vol rank-persistent?"), NOT a return/Sharpe bar (that's a
+  mini-holdout and spuriously kills runs). Return comparisons belong in Phase-2 (val) and the holdout
+  verdict. Write this into the deep-brief prompt §10 guidance.
+- findata caveat: the harness accessor defaults to `limit=750` (last ~3y); pass `limit=3000` to get
+  full 2015-2024 daily history.
+
 ## Deployment state
 - ✅ GitHub: pushed (`cae986d`, 15 commits this session).
 - ✅ luyao4: `git pull` + dry-run validated in the cron venv — $0.0890, **2 runnable
@@ -58,8 +83,12 @@ Distribution / bootstrap:
 2. **app → xp.io publish** (deferred): when publishing the LumidOS app for others; do app
    publish + (decided) bundle the seed in-app (plan A, already done) — no separate dataset.
 3. **app README** Quickstart mirror (English) — minor.
-4. (optional) run a **findata-native light gap** through the full TEST rails (Phase 0→1→holdout
-   + Deflated Sharpe), per the lesson that TEST targets must be cheap (see decisions).
+4. ✅ DONE — ran findata-native gaps through the full TEST rails (see "TEST pipeline" section above).
+5. **Write the Phase-0=precondition lesson into deep-brief prompt §10** (`prompts/09_gap_deep_brief.md`):
+   the Phase-0 signal should be a cheap precondition / separability check, not a return/Sharpe bar.
+   (feedback_phase0_precondition_not_return)
+6. (optional) GARCH scenario generator for the DRO gap → give it a fair full-rails run (currently a
+   Phase-0 kill only because the minimal bootstrap underestimates the OOS tail).
 
 ## Key decisions (do not relitigate)
 - **Cost/feasibility = decision-support, never auto-veto** a gap. Surface, don't drop.
