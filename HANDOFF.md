@@ -84,9 +84,9 @@ The "把 pipeline 跑通" goal is done. Two drivers in `~/Desktop/staged-experim
    publish + (decided) bundle the seed in-app (plan A, already done) — no separate dataset.
 3. **app README** Quickstart mirror (English) — minor.
 4. ✅ DONE — ran findata-native gaps through the full TEST rails (see "TEST pipeline" section above).
-5. **Write the Phase-0=precondition lesson into deep-brief prompt §10** (`prompts/09_gap_deep_brief.md`):
-   the Phase-0 signal should be a cheap precondition / separability check, not a return/Sharpe bar.
-   (feedback_phase0_precondition_not_return)
+5. ✅ DONE — Phase-0=precondition lesson written into deep-brief prompt §10 (both repos): Phase-0 must
+   be a precondition / separability check (correlation / AUROC / Cohen's d), not a return/Sharpe bar,
+   with good/bad examples. (feedback_phase0_precondition_not_return)
 6. (optional) GARCH scenario generator for the DRO gap → give it a fair full-rails run (currently a
    Phase-0 kill only because the minimal bootstrap underestimates the OOS tail).
 
