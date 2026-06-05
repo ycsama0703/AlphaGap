@@ -32,3 +32,4 @@ sentence-transformers>=3.0
 
 # Optional (后续阶段)
 # tenacity                # 重试装饰器
+pypdf>=4.0

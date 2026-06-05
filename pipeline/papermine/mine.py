@@ -6,39 +6,63 @@ STRUCTURE — multiple transferable sub-mechanisms, what the ablations reveal ab
 boundary conditions, and the failure modes the authors found. This is the deep fuel for research-gap
 generation (depth + mechanism composition + frontier).
 
-Headless: download+parse are deterministic node scripts (lifted from github.com/alaliqing/claude-paper,
-MIT); mining is DeepSeek via the AlphaGap LLMClient. Runs without an interactive agent → cron-able.
+Headless & dependency-light: download via httpx, parse via pypdf (both pure-python, in the venv) —
+NO node/npm needed (the server has no npm). Mining is the LLM via the AlphaGap LLMClient (opus in the
+hybrid). Runs without an interactive agent → cron-able. The node scripts (download-pdf.cjs/parse-pdf.js,
+MIT, github.com/alaliqing/claude-paper) remain in this dir as a reference fallback but are not used.
 
 Usage: from pipeline.papermine.mine import mine_paper; rec = mine_paper("2603.19835")
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import re
-import subprocess
 from pathlib import Path
 
 log = logging.getLogger("papermine")
 _DIR = Path(__file__).resolve().parent
-_NODE = "node"
-MAX_BODY = 42000   # chars of body fed to the LLM (drop references/appendix first)
+MAX_BODY = 42000     # chars of body fed to the LLM (drop references/appendix first)
+MAX_PDF_PAGES = 60   # cap pages parsed (long papers) to bound time/memory
+_ARXIV_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/(\d+\.\d+)")
+
+
+def _pdf_url(arxiv_id_or_url: str) -> str:
+    s = arxiv_id_or_url.strip()
+    m = _ARXIV_RE.search(s)
+    if m:
+        return f"https://arxiv.org/pdf/{m.group(1)}.pdf"
+    if s.startswith("http"):
+        return s
+    return f"https://arxiv.org/pdf/{s}.pdf"
 
 
 def fetch_fulltext(arxiv_id_or_url: str) -> dict:
-    """Download + parse a paper → {title, authors, abstract, content, githubLinks, codeLinks, pageCount}."""
-    url = (arxiv_id_or_url if arxiv_id_or_url.startswith("http")
-           else f"https://arxiv.org/abs/{arxiv_id_or_url}")
-    dl = subprocess.run([_NODE, str(_DIR / "download-pdf.cjs"), url],
-                        capture_output=True, text=True, timeout=120)
-    pdf_path = dl.stdout.strip().splitlines()[-1] if dl.stdout.strip() else ""
-    if dl.returncode != 0 or not pdf_path or not Path(pdf_path).exists():
-        raise RuntimeError(f"download failed: {dl.stderr.strip()[:200]}")
-    pr = subprocess.run([_NODE, str(_DIR / "parse-pdf.js"), pdf_path],
-                        capture_output=True, text=True, timeout=120)
-    if pr.returncode != 0:
-        raise RuntimeError(f"parse failed: {pr.stderr.strip()[:200]}")
-    return json.loads(pr.stdout)
+    """Download (httpx) + parse (pypdf) a paper → {title, content, githubLinks, pageCount}. Pure-python."""
+    import httpx
+    import pypdf
+    url = _pdf_url(arxiv_id_or_url)
+    r = httpx.get(url, follow_redirects=True, timeout=60.0,
+                  headers={"User-Agent": "AlphaGap/1.0 (research)"})
+    r.raise_for_status()
+    if "pdf" not in (r.headers.get("content-type", "")).lower() and not r.content[:4] == b"%PDF":
+        raise RuntimeError(f"not a PDF (content-type {r.headers.get('content-type')})")
+    reader = pypdf.PdfReader(io.BytesIO(r.content))
+    n_pages = len(reader.pages)
+    texts = []
+    for pg in reader.pages[:MAX_PDF_PAGES]:
+        try:
+            texts.append(pg.extract_text() or "")
+        except Exception:
+            continue
+    content = "\n".join(texts)
+    if len(content) < 500:
+        raise RuntimeError(f"parsed text too short ({len(content)} chars) — PDF may be scanned/empty")
+    lines = [ln for ln in content.split("\n") if ln.strip()]
+    github = re.findall(r"https?://github\.com/[^\s)\]]+", content)
+    return {"title": (lines[0] if lines else "")[:200], "content": content,
+            "githubLinks": sorted(set(github))[:5], "pageCount": n_pages}
 
 
 def _body_for_mining(content: str) -> str:
