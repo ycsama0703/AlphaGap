@@ -20,10 +20,11 @@ log = logging.getLogger(__name__)
 
 
 def opus_client(default: "LLMClient | None" = None):
-    """Build an OpenRouter/opus client for the quality-sensitive steps (L3 mining, mechanism-gap
-    generation, mechanism brief), regardless of the default provider. Falls back to `default` (or a
-    fresh default client) if OpenRouter isn't configured — so the hybrid degrades gracefully to the
-    cheap model rather than crashing. Model via OPENROUTER_MODEL_OPUS env (default claude-opus-4.8-fast)."""
+    """Build the OpenRouter client for the quality-sensitive deep steps (L3 full-text mining,
+    mechanism-gap generation, mechanism brief), regardless of the default provider. Falls back to
+    `default` (or a fresh default client) if OpenRouter isn't configured — so the hybrid degrades
+    gracefully to the cheap model rather than crashing. Model via OPENROUTER_MODEL_OPUS env (default
+    openai/gpt-chat-latest). [Factory name is historical — it now serves whatever the env points at.]"""
     # ensure .env is loaded into os.environ before reading the key (robust to call order —
     # otherwise this depends on some other LLMClient() having triggered load_dotenv first).
     try:
@@ -34,26 +35,7 @@ def opus_client(default: "LLMClient | None" = None):
     if not key:
         log.warning("opus_client: no OPENROUTER_API_KEY — falling back to default model")
         return default or LLMClient()
-    model = os.getenv("OPENROUTER_MODEL_OPUS", "anthropic/claude-opus-4.8-fast")
-    base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    return LLMClient(api_key=key, base_url=base, model=model, provider="openrouter")
-
-
-def agent_client(default: "LLMClient | None" = None):
-    """Build an OpenRouter client for the AGENT mechanism-gap work — the AI-protagonist gap generation
-    and its TEST-facing brief (agent_opportunity.generate_agent_*). Kept SEPARATE from opus_client (which
-    stays on L3 paper mining) so the agent side can run a different model from the paper-reading side.
-    Model via OPENROUTER_MODEL_AGENT env (default openai/gpt-chat-latest). Falls back to `default` (or a
-    fresh default client) if OpenRouter isn't configured — graceful degrade to the cheap model."""
-    try:
-        load_settings()
-    except Exception:
-        pass
-    key = os.getenv("OPENROUTER_API_KEY")
-    if not key:
-        log.warning("agent_client: no OPENROUTER_API_KEY — falling back to default model")
-        return default or LLMClient()
-    model = os.getenv("OPENROUTER_MODEL_AGENT", "openai/gpt-chat-latest")
+    model = os.getenv("OPENROUTER_MODEL_OPUS", "openai/gpt-chat-latest")
     base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     return LLMClient(api_key=key, base_url=base, model=model, provider="openrouter")
 
