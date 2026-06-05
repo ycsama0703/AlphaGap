@@ -24,6 +24,12 @@ def opus_client(default: "LLMClient | None" = None):
     generation, mechanism brief), regardless of the default provider. Falls back to `default` (or a
     fresh default client) if OpenRouter isn't configured — so the hybrid degrades gracefully to the
     cheap model rather than crashing. Model via OPENROUTER_MODEL_OPUS env (default claude-opus-4.8-fast)."""
+    # ensure .env is loaded into os.environ before reading the key (robust to call order —
+    # otherwise this depends on some other LLMClient() having triggered load_dotenv first).
+    try:
+        load_settings()
+    except Exception:
+        pass
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
         log.warning("opus_client: no OPENROUTER_API_KEY — falling back to default model")
