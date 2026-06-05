@@ -32,14 +32,18 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
         from ..papermine.mine import mine_paper
         from ..agent_opportunity import (generate_agent_opportunity_map,
                                          generate_agent_gap_brief, render_agent_brief_md)
-        from ..llm_client import opus_client
+        from ..llm_client import opus_client, agent_client
     except Exception as e:
         log.warning("research-gap stage unavailable (import): %s", e)
         return {"research_gaps": [], "mined_papers": [], "skipped": [], "error": str(e)}
 
-    # HYBRID: L3 mining + mechanism-gap generation + brief are the quality-sensitive steps → opus.
+    # HYBRID model routing for the quality-sensitive steps:
+    #   • L3 full-text paper mining (comprehension)          → opus               (opus_client)
+    #   • agent mechanism-gap generation + brief (AI side)   → openai/gpt-chat-latest (agent_client)
     # The cheap mechanical work (L1/L2 extract, gap pipeline) stays on the default model (`client`).
+    # agent_client degrades to opus (oc), which degrades to `client`, if OpenRouter isn't configured.
     oc = opus_client(default=client)
+    ac = agent_client(default=oc)
 
     fin_fields = ctx.get("fin_field_boundaries") or ctx.get("fin_field_boundaries_all") or []
     candidates = ctx.get("ai_recent_papers", []) or []
@@ -69,7 +73,7 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     try:
         # AI-PROTAGONIST generator: contributions are AI agent mechanisms / reliability / benchmarks,
         # finance is the hard scenario — NOT return prediction. (Replaces the old return-prone generator.)
-        gaps = generate_agent_opportunity_map(pool, client=oc)   # mechanism-gap generation → opus
+        gaps = generate_agent_opportunity_map(pool, client=ac)   # agent mechanism-gap generation → gpt-chat-latest
     except Exception as e:
         log.warning("research-gap stage: generation failed: %s", str(e)[:160])
         return {"research_gaps": [], "mined_papers": mined_ids, "skipped": skipped, "error": str(e)}
@@ -87,7 +91,7 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     for i, g in enumerate(gaps[:n_brief], 1):
         try:
             anchor = pool[0] if pool else None
-            brief = generate_agent_gap_brief(g, mined_anchor=anchor, client=oc)   # mechanism brief → opus
+            brief = generate_agent_gap_brief(g, mined_anchor=anchor, client=ac)   # agent mechanism brief → gpt-chat-latest
             md = render_agent_brief_md(brief, g)
             fname = f"{date_tag}-MECH-{i}.md"
             (bdir / fname).write_text(md, encoding="utf-8")
