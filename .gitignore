@@ -36,3 +36,27 @@ gap_log.jsonl
 GAP-LOG.md
 CELL-COVERAGE.md
 pending_cells.jsonl
+
+# papermine node deps (server runs npm install) + downloaded PDFs
+pipeline/papermine/node_modules/
+pipeline/papermine/package-lock.json
+/tmp/claude-paper-downloads/
+
+# session working files — not part of the deployable pipeline
+gap_inventory.jsonl
+gap_inventory.csv
+gap_inventory.xlsx
+batch_generate.py
+feed_history.py
+feed_history.log
+fin_frontier_candidates.jsonl
+.env.bak.*
+crontab.backup-*
+experiments/
+gap/
+UPGRADE_PLAN_*.md
+AUTO-RESEARCH-UPGRADES.md
+FIN-FRONTIER-CANDIDATES.md
+GAP-TO-EXPERIMENT-PLAYBOOK.md
+TEST-MODULE-DESIGN.md
+preview_*.html

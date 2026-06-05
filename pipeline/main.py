@@ -87,6 +87,24 @@ def run_daily(target_date: date | None = None,
     log.info("Cell coverage: %d/%d cells used; %d new frontier cell-proposals queued for review",
              cov["used_cells"], cov["total_cells"], n_pending)
 
+    # Step 2.5 — deep research-gap generation (precision-first, low-volume, best-effort).
+    # Mines the top-N anchor papers' FULL TEXT → runnable experiment slices gated by the
+    # empirical pre-mortem. Additive; never breaks the run. See research_gap_stage.py.
+    research_gap_result = {"research_gaps": [], "mined_papers": [], "skipped": []}
+    try:
+        from .analyze import research_gap_stage
+        n_rg = getattr(s, "research_gap_papers", 2)
+        if n_rg > 0:
+            log.info("Step 2.5: deep research-gap generation (mine top %d papers)", n_rg)
+            research_gap_result = research_gap_stage.generate_daily_research_gaps(
+                gap_result["context"], n_papers=n_rg, date_tag=target_date.isoformat(), client=client)
+            log.info("Research gaps: %d from %d mined paper(s); %d skipped",
+                     len(research_gap_result["research_gaps"]),
+                     len(research_gap_result["mined_papers"]),
+                     len(research_gap_result.get("skipped", [])))
+    except Exception as e:
+        log.warning("Step 2.5 research-gap stage skipped: %s", e)
+
     # Enrich gaps with full paper details from DB (for rendering)
     enrich_mod.enrich_accepted(gap_result["accepted"])
     # 3. Deep briefs are generated only after an idea reaches runnable engineering form.
@@ -143,6 +161,9 @@ def run_daily(target_date: date | None = None,
         "rejected": gap_result["rejected"],
         "downgraded": gap_result["downgraded"],
         "email_ready": gap_result["email_ready"],
+        "research_gaps": research_gap_result.get("research_gaps", []),
+        "research_gap_meta": {"mined_papers": research_gap_result.get("mined_papers", []),
+                              "skipped": research_gap_result.get("skipped", [])},
         "theoretical_leads": gap_result.get("theoretical_leads", []),
         "duplicates_suppressed": gap_result.get("duplicates_suppressed", []),
         "risk_audit": gap_result.get("risk_audit", {"enabled": False}),

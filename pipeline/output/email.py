@@ -76,6 +76,20 @@ def _brief_attachments(payload: dict) -> list[dict]:
             "content_type": "text/markdown; charset=utf-8",
         })
         item["_brief_attached"] = True
+    # mechanism-gap briefs (agent×finance) — same briefs/ dir, tagged _brief_file on each gap
+    for g in payload.get("research_gaps", []) or []:
+        bf = g.get("_brief_file")
+        if not bf:
+            continue
+        path = (PROJECT_ROOT / "briefs" / str(bf)).resolve()
+        if path.parent != briefs_root or not path.is_file():
+            log.warning("Mechanism brief attachment unavailable: %s", bf)
+            continue
+        attachments.append({
+            "filename": path.name,
+            "content": base64.b64encode(path.read_bytes()).decode("ascii"),
+            "content_type": "text/markdown; charset=utf-8",
+        })
     return attachments
 
 
@@ -102,6 +116,7 @@ def _render_html(d: date, p: dict) -> str:
         "<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;'>",
         f"<h1 style='margin-bottom:4px;'>AlphaGap — {d.isoformat()}</h1>",
         _stats_compact_html(p),
+        _research_gaps_html(p),
         _gaps_html(p),
         _leads_html(p),
         _trends_html(p) if _has_trend_content(p) else "",
@@ -220,6 +235,113 @@ def _has_trend_content(p: dict) -> bool:
         for side in ("ai", "fin")
         for bucket in ("rising", "new_emergence", "stable_hot", "falling")
     )
+
+
+def _research_gaps_html(p: dict) -> str:
+    """AI-agent × finance opportunities (mined from full-text agent papers) — AI is the protagonist:
+    the contribution is an agent mechanism / reliability-audit / benchmark, finance is the hard scenario,
+    NOT return prediction. Each entry carries the publishable-positive lens."""
+    rgs = p.get("research_gaps", []) or []
+    if not rgs:
+        return ""
+    mined = (p.get("research_gap_meta") or {}).get("mined_papers", [])
+    src_color = {"mined": "#0a6e3d", "general": "#57606a", "gap": "#b3261e"}
+    out = [f"<h2 style='border-bottom:2px solid #1f4e79;padding-bottom:4px;color:#1f4e79;'>"
+           f"🤖 AI-Agent × Finance Opportunities ({len(rgs)}) "
+           f"<span style='font-size:12px;color:#888;font-weight:normal;'>— mined from "
+           f"{', '.join(mined) or 'agent papers'}; AI-paper angles (unvalidated)</span></h2>"]
+    for g in rgs:
+        out.append(_mechanism_gap_html(g, src_color))
+    return "\n".join(out)
+
+
+def _mechanism_score_line(g: dict) -> str:
+    sc = g.get("scores", {}) or {}
+    ms = g.get("mechanism_source", "?")
+    src_color = {"mined": "#0a6e3d", "general": "#57606a", "gap": "#b3261e"}
+    score_html = ""
+    if sc:
+        score_html = (f"<span style='float:right;font-size:13px;color:#444;'><b>{_e(sc.get('composite','?'))}</b> "
+                      f"<span style='color:#888;'>(nov {_e(sc.get('novelty','?'))} · ai {_e(sc.get('ai_contribution','?'))} · "
+                      f"pos {_e(sc.get('positive_attainability','?'))} · feas {_e(sc.get('feasibility','?'))} · "
+                      f"pub {_e(sc.get('publishability','?'))})</span></span>")
+    return (f"<div style='font-size:11px;color:#1f4e79;'><b>{_e(g.get('ai_contribution_type','?').upper())}</b>"
+            f" · mechanism: <span style='color:{src_color.get(ms,'#888')};'>{_e(ms)}</span>{score_html}</div>")
+
+
+def _mechanism_gap_html(g: dict, src_color: dict) -> str:
+    """Render one mechanism gap. If it has a deep brief (top-N), use the SAME rich layout as the
+    engineering gap (transfer header 🏦/🤖/🔗 + EXPERIMENTAL SETUP tables); else a compact card."""
+    sc = g.get("scores", {}) or {}
+    brief = g.get("_brief") or {}
+    out = ["<div style='border:1px solid #cdd9e5;border-radius:8px;padding:12px 16px;margin:12px 0;background:#f8fbff;'>"]
+    out.append(_mechanism_score_line(g))
+    out.append(f"<h3 style='margin:6px 0 4px 0;font-size:16px;line-height:1.35;'>"
+               f"{_e(brief.get('title') or g.get('subtask','?'))}</h3>")
+    if sc.get("verdict_line"):
+        out.append(f"<p style='margin:2px 0;font-size:12px;color:#9a6700;'>⚖ {_e(sc.get('verdict_line'))}</p>")
+
+    if not brief:
+        # compact card (no brief expanded for this one)
+        out.append(f"<p style='margin:2px 0;font-size:12px;color:#888;'>金融为何更难: {_e(g.get('why_finance_makes_it_hard',''))}</p>")
+        out.append(f"<p style='margin:2px 0;font-size:13px;'>🧩 <b>机制</b>: {_e(g.get('candidate_mechanism',''))}</p>")
+        out.append(f"<p style='margin:2px 0;font-size:12px;color:#555;'>vs baseline: {_e(g.get('classical_baseline',''))} · prior: {_e(g.get('prior_work',''))[:140]}</p>")
+        out.append(f"<p style='margin:2px 0;font-size:13px;color:#0a6e3d;'>✅ <b>正向结果(AI层面)</b>: {_e(g.get('positive_result_shape',''))}</p>")
+        out.append(f"<p style='margin:2px 0;font-size:12px;color:#444;'>🆕 novelty: {_e(g.get('novelty_angle',''))}</p>")
+        out.append(f"<p style='margin:2px 0;font-size:11px;color:#777;'>📄 {_e(g.get('publishability',''))} · {_e(g.get('feasibility',''))}</p>")
+        out.append("</div>")
+        return "\n".join(out)
+
+    # RICH layout (mirrors engineering): transfer header + experimental setup
+    tr = brief.get("transfer_rationale", {}) or {}
+    fe = brief.get("first_experiment", {}) or {}
+    de = brief.get("dataset_env", {}) or {}
+    mt = brief.get("metrics", {}) or {}
+    fz = brief.get("feasibility", {}) or {}
+    # 🏦 Fin problem · 🤖 AI technique · 🔗 transfer rationale
+    out.append(f"<p style='margin:8px 0 2px;font-size:13px;'>🏦 <b>Fin 问题</b> · {_e(g.get('why_finance_makes_it_hard',''))}</p>")
+    out.append(f"<p style='margin:2px 0;font-size:13px;'>🤖 <b>AI 贡献</b> · {_e(brief.get('ai_contribution') or g.get('candidate_mechanism',''))}</p>")
+    out.append(f"<p style='margin:2px 0;font-size:13px;'>🧩 <b>机制</b> · {_e(g.get('candidate_mechanism',''))}</p>")
+    out.append("<div style='margin:6px 0;font-size:12px;color:#334155;'><b>🔗 迁移依据</b>"
+               f"<br>· 结构对应 — {_e(tr.get('structural',''))}"
+               f"<br>· 为什么成立 — {_e(tr.get('why_holds',''))}"
+               f"<br>· 可信度 — {_e(tr.get('credibility',''))}</div>")
+    out.append(f"<p style='margin:4px 0;font-size:12px;color:#444;'>🆕 <b>novelty</b> · {_e(brief.get('novelty_positioning') or g.get('novelty_angle',''))}</p>")
+    out.append(f"<p style='margin:4px 0;font-size:13px;color:#0a6e3d;'>✅ <b>正向结果(AI层面)</b> · {_e(g.get('positive_result_shape',''))}</p>")
+    if g.get("_brief_file"):
+        out.append(f"<p style='margin:4px 0;font-size:12px;color:#1f4e79;'>📖 Deep brief: attached <code>{_e(g.get('_brief_file'))}</code></p>")
+    # EXPERIMENTAL SETUP (reuse the engineering _design_table)
+    out.append("<div style='margin:14px 0 6px;border-top:1px solid #e5e7eb;padding-top:12px;'>"
+               "<p style='margin:0 0 8px;font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;'>Experimental setup</p>")
+    out.append(_design_table("00", "First Experiment", "The smallest go/no-go test to run now", [
+        ("Question", fe.get("question") or "?"),
+        ("Minimal setup", fe.get("minimal_setup") or "?"),
+        ("Go", fe.get("go") or "?"),
+        ("Stop / pivot", fe.get("stop_pivot") or "?"),
+        ("Runtime", fe.get("runtime") or "?"),
+    ]))
+    out.append(_design_table("01", "Dataset / environment", "What is observed and how evaluation stays valid", [
+        ("Sources", de.get("sources") or "?"),
+        ("Sample / unit", de.get("unit") or "?"),
+        ("Evaluation split", de.get("split") or "?"),
+        ("Leakage controls", de.get("leakage_controls") or "?"),
+    ]))
+    metric_rows = [("Primary", m, "-") for m in (mt.get("primary") or [])] + \
+                  [("Secondary", m, "-") for m in (mt.get("secondary") or [])]
+    out.append(_design_table("02", "Metrics", "What determines success (AI-level, not Sharpe)",
+                             metric_rows or [("-", "Not specified", "-")], headers=("Tier", "Measure", "Use")))
+    ba_rows = [(b.get("class", "?"), b.get("comparator", "?"), b.get("purpose", "-"))
+               for b in (brief.get("baselines_ablations") or []) if isinstance(b, dict)]
+    out.append(_design_table("03", "Baselines & ablations", "What the mechanism must beat or justify",
+                             ba_rows or [("-", "Not specified", "-")], headers=("Class", "Comparator / variant", "Purpose")))
+    p0 = brief.get("phase0_preconditions") or []
+    if p0:
+        bits = "<br>".join(f"· [{_e(p.get('risk','?'))}] {_e(p.get('rule',''))}: {_e(p.get('must_be_true',''))} — $0 check: {_e(p.get('cheap_check',''))}"
+                           for p in p0 if isinstance(p, dict))
+        out.append(f"<div style='margin:8px 0;font-size:12px;color:#334155;'><b>🧪 Phase-0 前提体检(真门槛)</b><br>{bits}</div>")
+    out.append(f"<p style='margin:6px 0;font-size:11px;color:#777;'>💰 {_e(fz.get('api_cost','?'))} · 🖥 {_e(fz.get('compute','?'))} · 📊 build: {_e(fz.get('data_build','?'))} · bottleneck: {_e(fz.get('main_bottleneck','?'))}</p>")
+    out.append("</div></div>")
+    return "\n".join(out)
 
 
 def _gaps_html(p: dict) -> str:
@@ -385,6 +507,37 @@ def _transfer_header_html(g: dict, gtype: str) -> str:
     return "\n".join(out)
 
 
+def _significance_color(sig) -> str:
+    if sig is None:
+        return "#888"
+    if sig >= 7:
+        return "#0a6e3d"   # green — matters
+    if sig >= 5:
+        return "#9a6700"   # amber — marginal
+    return "#b3261e"        # red — likely clever-but-minor
+
+
+def _significance_badge(s: dict) -> str:
+    sig = s.get("significance")
+    if sig is None:
+        return "sig ?"
+    return f"<b style='color:{_significance_color(sig)};'>sig {_e(sig)}</b>"
+
+
+def _significance_line(s: dict) -> str:
+    """🎯 the would-it-matter-if-confirmed axis + reason; flags 'sound but minor' gaps.
+    Display-only decision-support — never gates or reorders past soundness."""
+    sig = s.get("significance")
+    if sig is None:
+        return ""
+    reason = _e(s.get("significance_reason", ""))
+    flag = ("&nbsp;<span style='color:#b3261e;font-weight:600;'>⚠ 低重要性 · sound 但可能鸡肋</span>"
+            if sig <= 5 else "")
+    return (f"<p style='margin:4px 0 2px 0;font-size:12px;color:#555;'>"
+            f"🎯 <b style='color:{_significance_color(sig)};'>significance {_e(sig)}/10</b>"
+            f"{(' · ' + reason) if reason else ''}{flag}</p>")
+
+
 def _gap_card_html(item: dict) -> str:
     g = item["gap"]
     s = item["score"]
@@ -418,10 +571,11 @@ def _gap_card_html(item: dict) -> str:
         f"<span style='font-size:13px;color:#444;'>"
         f"<b>{_e(s['total'])}</b> "
         f"<span style='color:#888;'>(nov {_e(s['novelty'])} · act {_e(s['actionability'])} · "
-        f"theory {_e(s.get('theoretical_support', '?'))})</span></span>",
+        f"theory {_e(s.get('theoretical_support', '?'))} · {_significance_badge(s)})</span></span>",
         f"</div>",
         # Hypothesis
         f"<h3 style='margin:8px 0 4px 0;font-size:16px;line-height:1.35;'>{hyp}</h3>",
+        _significance_line(s),
     ]
     if s.get("email_gate"):
         out.append(

@@ -66,20 +66,55 @@ failure_mode_match 与 identifiable_prediction 应给低分。
 - 3-4: 表面类比，failure mode/前提不清，没有清楚证伪路径
 - 1-2: buzzword matching 或“AI 方法 X 很强所以金融也能用”
 
+【维度 4：significance 重要性（1-10）】
+评估【假如这个 gap 被证实】，它到底有多重要。这一维与 novelty / actionability / theoretical_support
+【正交】：一个 gap 可以迁移干净、可执行、机制成立，却依然"做出来也就那样"。novelty 问"新不新"，
+significance 问"做成了值不值、会不会改变什么"。
+
+判分取以下三条的最高者（有一条强即可）：
+1. 经济落点：若成立，能否带来【持续、可交易】的 alpha，或可观的风控/成本/容量改进——而不是只在样本内、
+   或已知在衰减的 anomaly、或边际到不值得部署。
+2. 科学洞见：能否得出一个【改变认知/实践】的机制性结论——而不是又一个增量架构在拥挤赛道上的微调。
+3. 决策影响：结论（无论阳性还是阴性）能否真正改变从业者或研究者的做法；负结果是否也有信息量。
+
+评分标准：
+- 9-10: 若成立会改变某个子领域的做法，或打开一条可观的新 alpha / 风控来源
+- 7-8: 有明确的实际收益，但偏增量；或负结果也很有信息量
+- 5-6: 有点用，但赛道拥挤 / 底层信号已知薄弱 / 收益边际
+- 3-4: 聪明的迁移，但"做成了也就那样"——payoff 模糊、或只是软指标（如"可解释性"）
+- 1-2: 纯换皮、已知无效、或没人会因此改变做法
+
+【significance 强力减分项（命中任一，significance ≤ 5）】
+- 成功判据【循环】：把结论写进了设计（如"用 X 正则化专家、再验证它载荷在 X 上"）
+- 赛道【极度拥挤】且本质只是架构微调（如又一个 autoencoder/MoE 资产定价变体）
+- payoff 只是【软指标】（可解释性、"更鲁棒"）而无清晰可证伪的经济/科学落点
+- 核心收益依赖【已知在衰减或样本内才显著】的信号
+
+【经验前提风险(机制级 pre-mortem,见 knowledge/FAILURE_PREMORTEM.md)】
+打分时还要看 gap 的**核心经验前提**是否被检验/站得住——这与"迁移逻辑成不成立"正交,且历史上几乎所有失败都断在这里:
+- 可学习下限(机制要学的信号独立强度够吗)、诊断对象先存在(被检测的现象样本外真存在吗)、
+  因果杠杆≠结构同构(改的量真能撬动目标指标吗)、主约束体检(修的是不是 baseline 主误差源)。
+- 若某核心前提**未被 brief 检验**或**明显过不了** → 在 significance_reason 里点明该前提风险,**significance 不得给高分**
+  (sound 但前提存疑 = 大概率做不出来,正是该被筛掉的"鸡肋")。
+
+注意：significance 不进 total，也不作为邮件门槛——它是【呈现给人的决策维度】，帮人一眼筛掉
+"sound 但鸡肋"的 gap，不自动否决任何 gap（与 cost/feasibility 同样是 decision-support）。
+
 输出规则：
 1. 严格 JSON，无前后缀
-2. 两个分数 1-10 整数
+2. novelty / actionability / significance 三个分数均为 1-10 整数
 3. theoretical_support_components 的 5 个子分均为 1-10 整数
 4. theoretical_support 由 pipeline 按 5 个子分平均计算；你也可输出该字段，但 pipeline 会重算
-5. 每个主分附 ≤ 25 字 reason
-6. total 暂时仍为 round((novelty + actionability) / 2, 1)，不要把 theoretical_support 混入 total
+5. 每个主分附 ≤ 25 字 reason（significance_reason 必须点明 payoff 是什么 / 或为何鸡肋）
+6. total 暂时仍为 round((novelty + actionability) / 2, 1)，不要把 theoretical_support 或 significance 混入 total
 7. 仅工程型且总分 ≥ 8 才会进入邮件展示；理论型即使新颖也仅进入 inbox 人工讨论
+8. significance 不进 total、不作门槛，但必须输出——它是给人筛"sound 但鸡肋"的决策维度
 ```
 
 ## User Prompt Template
 
 ```
-请评估以下 gap 的 novelty、actionability 和 theoretical_support。
+请评估以下 gap 的 novelty、actionability、theoretical_support 和 significance。
 
 【gap 类型】 {type}
 【gap 内容】
@@ -105,6 +140,8 @@ failure_mode_match 与 identifiable_prediction 应给低分。
     "theoretical_anchors": int
   },
   "theoretical_support_reason": string,
+  "significance": int,   // 1-10：做成了值不值/会不会改变什么（与上面三维正交）
+  "significance_reason": string,   // 点明 payoff 是什么，或为何鸡肋（循环判据/拥挤赛道/软指标/衰减信号）
   "total": float
 }
 ```
@@ -125,6 +162,8 @@ failure_mode_match 与 identifiable_prediction 应给低分。
     "theoretical_anchors": 7
   },
   "theoretical_support_reason": "结构和 failure mode 匹配，前提需实验验证",
+  "significance": 7,
+  "significance_reason": "若成立给出可交易的条件 alpha；但赛道较拥挤，偏增量",
   "total": 8.5
 }
 ```

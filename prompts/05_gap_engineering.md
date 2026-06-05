@@ -105,9 +105,20 @@
      * run_wallclock: **机器**跑完一轮的墙钟时间（不是人工时），如 "几分钟 (CPU)", "~2 GPU-hours", "~6h (单 GPU)"
      * 【API$】api_cost_usd: 跑完整个实验预计的 LLM API 美元成本（数字，如 2、150；纯统计/回测无 LLM 调用填 0）
      * 【数据】findata_native: true/false —— 整个实验（不只 Phase 0）能否仅靠 findata / 自包含数据跑通
+       - **判定前严格对照 `knowledge/FINDATA_CATALOG.md`，不要凭印象。** findata = 7851 只美股的
+         价格(ohlc) + 基本面(statements/ratios/key_metrics/growth) + 宏观(treasury/economic) +
+         分析师 + 持仓/insider + 文本(filings/transcripts/news)。**FF/特征因子可由横截面自行构造,不算缺数据。**
+         真正不 native 的只有三类:① 文本+**标注/agent 轨迹**(如引用对错、工具选对没);② 要**自己生成的语料**
+         (如因子表达式库);③ 非美股/期权/tick<1min,或把"latest 快照"接口当历史 PIT 用。
      * data_build: 若 findata_native=false，**要先建什么数据/基建**（这才是真·拦路虎，对 AI 也一样），如 "需自建带标注的因子回测语料 ~5000 条" / "需搭多 agent harness + RL 训练管线"；findata_native=true 则填 "none (findata)"
      * main_bottleneck: 主要瓶颈，如 "数据清洗", "LLM API 成本", "GPU 训练"
      * fallback: 低成本替代方案，如 "先用线性模型 / 小样本 / API judge 验证机制"
+   - empirical_preconditions: **机制级 pre-mortem(对照 `knowledge/FAILURE_PREMORTEM.md`)**。列出"这个机制要 work,必须为真的 2-3 个经验事实",每条配一个 $0/一行的当下体检,且**写成机制级的量,不要泛泛品牌名**。已知反复踩的坑(逐条自查):
+     * 【可学习下限】机制要从某信号学/分离东西 → 该信号的**独立**强度是否 ≥ 可学习下限(月频截面 rank-IC≳0.05)?(否则架构再好也学不出)
+     * 【诊断对象先存在】检测/审计型机制 → 被诊断的现象在**样本外**真的存在吗?(且"归因占比"≠"泛化来源")
+     * 【因果杠杆≠结构同构】机制改变的量,是否**真能撬动目标指标**(不只是两边结构像)?
+     * 【主约束体检】机制修的 failure 源,是不是 baseline 的**主**误差源?(修非主导源净收益≈0)
+     哪条明显过不了 → 在 key_risks 里标红,significance/可行性据此下调。
    - key_risks: 1-3 条可能踩坑（数据可得性、训练成本、方法适配性）
    - anchor_papers: ai 和 fin 侧各自的锚定论文
 3. 必须避免：

@@ -19,8 +19,41 @@ from .config import load_settings
 log = logging.getLogger(__name__)
 
 
+def opus_client(default: "LLMClient | None" = None):
+    """Build an OpenRouter/opus client for the quality-sensitive steps (L3 mining, mechanism-gap
+    generation, mechanism brief), regardless of the default provider. Falls back to `default` (or a
+    fresh default client) if OpenRouter isn't configured — so the hybrid degrades gracefully to the
+    cheap model rather than crashing. Model via OPENROUTER_MODEL_OPUS env (default claude-opus-4.8-fast)."""
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        log.warning("opus_client: no OPENROUTER_API_KEY — falling back to default model")
+        return default or LLMClient()
+    model = os.getenv("OPENROUTER_MODEL_OPUS", "anthropic/claude-opus-4.8-fast")
+    base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    return LLMClient(api_key=key, base_url=base, model=model, provider="openrouter")
+
+
+def _strip_json_fences(content: str) -> str:
+    """Some models (e.g. Claude via OpenRouter) wrap JSON in ```json ... ``` fences; DeepSeek doesn't.
+    Strip a leading/trailing markdown code fence so json.loads works across providers."""
+    s = content.strip()
+    if s.startswith("```"):
+        s = s[3:]
+        if s[:4].lower() == "json":
+            s = s[4:]
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+        # also handle a stray leading 'json\n' without backticks
+    return s
+
+
 class LLMClient:
-    def __init__(self) -> None:
+    def __init__(self, *, api_key: str | None = None, base_url: str | None = None,
+                 model: str | None = None, provider: str | None = None) -> None:
+        """Defaults come from settings (.env). Pass overrides to point one client at a different
+        provider/model — used for the hybrid (cheap default model for mechanical work, opus for
+        the quality-sensitive steps: L3 mining + mechanism-gap generation + brief). See opus_client()."""
         s = load_settings()
         default_headers = {
             key: value
@@ -31,14 +64,14 @@ class LLMClient:
             if value
         }
         self._client = OpenAI(
-            api_key=s.llm_api_key,
-            base_url=s.llm_base_url,
+            api_key=api_key or s.llm_api_key,
+            base_url=base_url or s.llm_base_url,
             default_headers=default_headers or None,
         )
-        self.provider = s.llm_provider
-        self._model_default = s.llm_model_default
-        self._model_reasoning = s.llm_model_reasoning
-        self._model_brief = s.llm_model_brief
+        self.provider = provider or s.llm_provider
+        self._model_default = model or s.llm_model_default
+        self._model_reasoning = model or s.llm_model_reasoning
+        self._model_brief = model or s.llm_model_brief
         self._input_cost_per_m = s.llm_input_cost_per_m
         self._output_cost_per_m = s.llm_output_cost_per_m
         self._reasoning_input_cost_per_m = s.llm_reasoning_input_cost_per_m
@@ -108,7 +141,7 @@ class LLMClient:
                 f"LLM returned empty content (finish_reason={resp.choices[0].finish_reason})"
             )
         try:
-            return json.loads(content)
+            return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as e:
             log.error("JSON parse failed: %s\ncontent[:500]=%r", e, content[:500])
             raise

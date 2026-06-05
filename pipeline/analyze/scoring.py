@@ -1,9 +1,14 @@
 """Gap scoring — Prompt 07.
 
-Two dimensions:
+Dimensions:
   novelty (1-10):       has this gap been explored already?
   actionability (1-10): how easy is it to actually do this research?
-  theoretical_support: how well grounded the transfer mechanism is.
+  theoretical_support:  how well grounded the transfer mechanism is.
+  significance (1-10):   if CONFIRMED, would it matter? (durable edge / real insight /
+                         changes practice) — orthogonal to the above; a gap can be sound,
+                         novel, runnable AND insignificant. Decision-support only: shown to
+                         the human to filter "clever-but-minor" gaps, never gates or vetoes
+                         (same status as cost/feasibility). NOT folded into total.
 Total currently remains avg(novelty, actionability). Only total >=
 ENGINEERING_EMAIL_THRESHOLD makes engineering gaps email-ready. Theoretical gaps
 remain in the inbox for human discussion; daily email is reserved for runnable
@@ -51,6 +56,7 @@ def score_gap(gap: dict, gap_type: str,
 
     novelty = _clamp_int(result.get("novelty"), 1, 10)
     actionability = _clamp_int(result.get("actionability"), 1, 10)
+    significance = _clamp_int(result.get("significance"), 1, 10)
     support_components = _support_components(result.get("theoretical_support_components"))
     theoretical_support = _component_average(support_components)
     cap = mapping_novelty_cap(gap, mappings_brief)
@@ -79,6 +85,8 @@ def score_gap(gap: dict, gap_type: str,
         "theoretical_support": theoretical_support,
         "theoretical_support_reason": result.get("theoretical_support_reason", "")[:200],
         "theoretical_support_components": support_components,
+        "significance": significance,
+        "significance_reason": result.get("significance_reason", "")[:200],
         "total": total,
         "passes_email_threshold": email_gate["passes"],
         "email_gate": email_gate["gate"],

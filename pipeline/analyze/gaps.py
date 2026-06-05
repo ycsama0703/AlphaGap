@@ -1124,9 +1124,13 @@ def _soundness_key(item: dict) -> tuple:
     structural_homology / failure_mode_match / assumption_transferability /
     identifiable_prediction / theoretical_anchors, i.e. how likely the transfer
     actually holds and the experiment pans out. That (not novelty, not cheapness)
-    is what we surface first; total score breaks ties."""
+    is what we surface first. SIGNIFICANCE (would-it-matter-if-confirmed) breaks ties
+    next, so among equally-sound gaps the ones that actually matter float up; total
+    is the final tiebreak. Significance never gates — only reorders within sound peers."""
     sc = item.get("score", {}) or {}
-    return (sc.get("theoretical_support", 0) or 0, sc.get("total", 0) or 0)
+    return (sc.get("theoretical_support", 0) or 0,
+            sc.get("significance", 0) or 0,
+            sc.get("total", 0) or 0)
 
 
 def select_email_experiments(accepted: list[dict],

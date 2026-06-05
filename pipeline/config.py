@@ -37,6 +37,7 @@ class Settings:
     log_level: str
     dry_run: bool
     adversarial_gap_review: bool
+    research_gap_papers: int   # how many top papers/day to deep-mine into research gaps (0 = off); precision-first → low
 
 
 def load_settings() -> Settings:
@@ -67,6 +68,7 @@ def load_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         dry_run=os.getenv("DRY_RUN", "false").lower() == "true",
         adversarial_gap_review=os.getenv("ADVERSARIAL_GAP_REVIEW", "false").lower() == "true",
+        research_gap_papers=int(os.getenv("RESEARCH_GAP_PAPERS", "2")),
     )
 
 

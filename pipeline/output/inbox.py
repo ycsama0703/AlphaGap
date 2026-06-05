@@ -33,6 +33,7 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
         "",
         _section_stats(payload),
         _section_risk_audit(payload),
+        _section_research_gaps(payload),
         _section_gaps_email(payload),
         _section_leads(payload),
         _section_suppressed_duplicates(payload),
@@ -47,6 +48,41 @@ def write_daily_inbox(d: date, payload: dict, *, out_dir: Path | None = None) ->
     path.write_text("\n\n".join(p for p in parts if p), encoding="utf-8")
     log.info("Inbox written to %s", path)
     return path
+
+
+def _section_research_gaps(p: dict) -> str:
+    """AI-agent × finance opportunities (full-text mined from agent papers) — AI-paper angles where the
+    contribution is an agent mechanism / reliability-audit / benchmark, finance is the hard scenario.
+    Unvalidated candidates: novelty/feasibility still to be checked, none tested."""
+    rgs = p.get("research_gaps", []) or []
+    meta = p.get("research_gap_meta") or {}
+    if not rgs and not meta.get("mined_papers"):
+        return ""
+    lines = [f"\n## 🤖 AI-Agent × Finance Opportunities ({len(rgs)})",
+             f"_Mined from full text: {', '.join(meta.get('mined_papers', [])) or '—'}"
+             f"{('; skipped ' + str(len(meta.get('skipped', [])))) if meta.get('skipped') else ''}. "
+             f"AI is the protagonist (mechanism/reliability/benchmark), finance is the scenario — NOT return "
+             f"prediction. UNVALIDATED candidates: novelty + feasibility still to check; none tested._"]
+    for g in rgs:
+        sc = g.get("scores", {}) or {}
+        lines.append(f"\n### [{g.get('ai_contribution_type','?')}] {g.get('subtask','?')}  ·  mechanism: {g.get('mechanism_source','?')}")
+        if sc:
+            lines.append(f"- **scores**: composite **{sc.get('composite','?')}** (nov {sc.get('novelty','?')} · "
+                         f"ai_contribution {sc.get('ai_contribution','?')} · positive {sc.get('positive_attainability','?')} · "
+                         f"feasibility {sc.get('feasibility','?')} · publishability {sc.get('publishability','?')}) — "
+                         f"_{sc.get('verdict_line','')}_")
+        if g.get("_brief_file"):
+            lines.append(f"- **📖 deep brief**: attached `{g.get('_brief_file')}`")
+        lines.append(f"- **why finance makes it hard**: {g.get('why_finance_makes_it_hard','')}")
+        lines.append(f"- **mechanism**: {g.get('candidate_mechanism','')}")
+        lines.append(f"- **vs baseline**: {g.get('classical_baseline','')}")
+        lines.append(f"- **prior work**: {g.get('prior_work','')}")
+        lines.append(f"- **why AI wins**: {g.get('why_ai_wins','')}")
+        lines.append(f"- **✅ positive result (AI-level)**: {g.get('positive_result_shape','')}")
+        lines.append(f"- **novelty**: {g.get('novelty_angle','')}")
+        lines.append(f"- **findata env**: {g.get('findata_env','')}")
+        lines.append(f"- **publishability / feasibility**: {g.get('publishability','')} · {g.get('feasibility','')}")
+    return "\n".join(lines)
 
 
 def _section_stats(p: dict) -> str:
@@ -460,10 +496,12 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
     gtype = item["type"]
     hypothesis = g.get("hypothesis", "?")
 
+    sig = s.get("significance")
+    sig_flag = " ⚠低重要性" if isinstance(sig, (int, float)) and sig <= 5 else ""
     head = (
         f"\n### [{gid}] ({gtype}) total={s['total']} · "
         f"novelty={s['novelty']} · actionability={s['actionability']} · "
-        f"theory={s.get('theoretical_support', '?')}\n\n"
+        f"theory={s.get('theoretical_support', '?')} · 🎯significance={sig if sig is not None else '?'}{sig_flag}\n\n"
         f"**假设**: {hypothesis}\n"
     )
     # Decision header: Fin problem → AI technique (+backing) → transfer basis.
@@ -476,6 +514,7 @@ def _render_gap_detail(item: dict, *, full: bool) -> str:
     head += f"- novelty: {s.get('novelty_reason', '')}\n"
     head += f"- actionability: {s.get('actionability_reason', '')}\n"
     head += f"- theoretical_support: {s.get('theoretical_support_reason', '')}\n"
+    head += f"- 🎯 significance: {s.get('significance_reason', '')}\n"
     components = s.get("theoretical_support_components") or {}
     if components:
         comp_text = ", ".join(f"{k}={v}" for k, v in components.items())

@@ -19,6 +19,39 @@ from dataclasses import dataclass, field
 from .config import load_whitelist
 
 
+import re
+
+# Battlefield relevance (topic rebalancing, "b"): our AI×Fin battlefields are NLP/text, agents,
+# time-series, retrieval, interpretability, RL-for-reasoning — NOT vision/robotics/bio, which dominate
+# arxiv/HF trending (vision ~32% of the corpus) and crowd out on-battlefield papers via upvotes. These
+# patterns re-weight priority so battlefield papers get L2-extracted + become anchors, instead of
+# high-upvote vision noise. Computed from title+abstract+categories (available pre-L1). Reorders only —
+# never drops a paper from candidacy.
+# SPECIFIC patterns only — generic terms ("language model", "reasoning", "temporal", "embedding")
+# match almost every modern AI paper and give no discrimination, so they're excluded. We want
+# text-UNDERSTANDING / agent / retrieval / finance specifically, not "any LLM paper".
+_BATTLEFIELD_PATTERNS = {
+    "nlp_text": r"text classif|sentiment|summari|information extraction|named entity|entity recognition|"
+                r"document understanding|reading comprehension|relation extraction|text mining|"
+                r"financial text|10-?k|earnings call|transcript|filing",
+    "agent_tool": r"multi-?agent|tool[- ]?use|tool[- ]?call|tool routing|\bReAct\b|agent orchestrat|"
+                  r"agentic workflow|function calling",
+    "reasoning_credit": r"chain-of-thought|credit assign|process reward|verifier|step-level|inference-time scaling",
+    "retrieval": r"retrieval-augmented|\bRAG\b|dense passage|re-?ranking|passage retrieval",
+    "time_series": r"time[- ]?series|forecasting|volatility model|regime (?:detect|switch)",
+    "interpretability": r"sparse autoencoder|mechanistic interpretab|circuit analysis|feature attribution|probing classifier",
+    "finance": r"financ|trading|portfolio|asset pricing|\bstock\b|equity return|\balpha\b|factor model|"
+               r"volatilit|credit risk|market microstructure|\bq-fin",
+}
+# strong off-battlefield modality markers — a paper dominated by these is NOT our battlefield even
+# if it also says "reasoning"/"language model" (multimodal LLM papers do). Penalised whenever present
+# and the paper has NO finance battlefield hit (finance multimodal would be a rare legit exception).
+_OFFFIELD_PATTERN = (r"image generation|diffusion model|\bvideo\b|\b3d\b|point cloud|\brobot|embodied|"
+                     r"manipulation|autonomous driving|\bvision\b|visual question|multimodal|\bVLM\b|"
+                     r"speech|audio|text-to-image|text-to-video|protein|molecul|drug discovery|\bgenom|"
+                     r"image classif|object detection|segmentation|rendering")
+
+
 @dataclass
 class CandidateSignals:
     is_hf_daily: bool = False
@@ -28,6 +61,8 @@ class CandidateSignals:
     institution_match: list[str] = field(default_factory=list)
     keyword_matches: list[str] = field(default_factory=list)
     title_keyword_hit: bool = False           # keyword in title (stronger signal than abstract)
+    battlefields: list[str] = field(default_factory=list)   # which AI×Fin battlefields this paper hits
+    offfield: bool = False                    # has strong vision/robotics/bio/multimodal modality markers
 
     @property
     def is_candidate(self) -> bool:
@@ -52,6 +87,14 @@ class CandidateSignals:
         score += 0.5 * len(self.keyword_matches)
         if self.title_keyword_hit:
             score += 1.5
+        # battlefield relevance (topic rebalancing): boost on-battlefield, penalise off-modality noise.
+        # finance hits count double (it's the whole point); generic LLM words no longer match (see patterns).
+        bf = set(self.battlefields)
+        score += 3.0 if "finance" in bf else 0.0
+        score += 1.5 * min(len(bf - {"finance"}), 3)       # +1.5 per non-finance battlefield, cap 3
+        # vision/robotics/bio/multimodal markers → sink it, UNLESS it's genuinely finance (rare exception)
+        if self.offfield and "finance" not in bf and not self.is_q_fin:
+            score -= 6.0
         return score
 
     def to_dict(self) -> dict:
@@ -63,6 +106,8 @@ class CandidateSignals:
             "institution_match": self.institution_match,
             "keyword_matches": self.keyword_matches,
             "title_keyword_hit": self.title_keyword_hit,
+            "battlefields": self.battlefields,
+            "offfield": self.offfield,
             "priority_score": round(self.priority_score, 2),
         }
 
@@ -149,6 +194,14 @@ def compute_signals(paper: dict, whitelist: dict | None = None) -> CandidateSign
                 title_hit = True
     sig.keyword_matches = matches
     sig.title_keyword_hit = title_hit
+
+    # 6. Battlefield relevance (topic rebalancing) — which AI×Fin battlefields the paper hits,
+    # and whether it's pure off-battlefield noise (vision/robotics/bio with no battlefield).
+    cat_text = " ".join(cats).lower()
+    relevance_hay = haystack + "\n" + cat_text
+    sig.battlefields = [name for name, pat in _BATTLEFIELD_PATTERNS.items()
+                        if re.search(pat, relevance_hay, re.I)]
+    sig.offfield = bool(re.search(_OFFFIELD_PATTERN, relevance_hay, re.I))
 
     return sig
 

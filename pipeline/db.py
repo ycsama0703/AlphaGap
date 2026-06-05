@@ -291,6 +291,19 @@ CREATE INDEX IF NOT EXISTS idx_memberships_family
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_membership
     ON mechanism_memberships(paper_id, mechanism_slot)
     WHERE membership_status = 'accepted';
+
+-- L3 deep paper-mine cache (lazy write-back): when a paper's FULL TEXT is mined
+-- on-demand (pipeline/papermine), the structured deep record is persisted here so
+-- the corpus deepens where it's actually used — no re-mining, no upfront 5k re-run.
+CREATE TABLE IF NOT EXISTS paper_mines (
+    arxiv_id        TEXT PRIMARY KEY,             -- arxiv-format id (also the papers.id for HF Daily)
+    mined_json      TEXT NOT NULL,                -- full L3 record (main_claim, sub_mechanisms[], ablations_why[], ...)
+    pages           INTEGER,
+    fulltext_chars  INTEGER,
+    n_sub_mechanisms INTEGER,
+    mined_at        TEXT NOT NULL,
+    miner_version   TEXT NOT NULL DEFAULT 'l3-v1'
+);
 """
 
 
@@ -319,6 +332,9 @@ def connect(path: Path | None = None):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Wait out transient write-locks instead of failing immediately (e.g. lazy paper_mines
+    # write-back coinciding with another DB access) — sqlite is single-writer.
+    conn.execute("PRAGMA busy_timeout = 8000")
     try:
         yield conn
         conn.commit()
