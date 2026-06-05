@@ -16,7 +16,7 @@ from .extract.concepts import extract_l1, extract_l2
 from .fetchers import arxiv as arxiv_fetcher
 from .fetchers import hf_daily as hf_fetcher
 from .filter import compute_signals, filter_candidates
-from .llm_client import LLMClient
+from .llm_client import LLMClient, opus_client
 
 
 log = logging.getLogger(__name__)
@@ -139,8 +139,12 @@ def extract_pending(
     include_evidence: bool = False,
     evidence_only: bool = False,
 ) -> dict:
-    """Run L1 on pending candidates, then L2 on top by priority."""
+    """Run L1 on pending candidates, then L2 on top by priority.
+
+    L1 (coarse triage on every paper) stays on the cheap default model; L2 (deeper
+    extraction on the priority subset, ~20/day) runs on the gpt deep model for quality."""
     client = LLMClient()
+    l2_client = opus_client(default=client)   # L2 → gpt deep model; falls back to `client` if unconfigured
     stats = {"l1_done": 0, "l1_failed": 0, "l2_done": 0, "l2_failed": 0}
 
     with db.connect() as conn:
@@ -184,7 +188,7 @@ def extract_pending(
             paper_dict = {"title": row["title"], "abstract": row["abstract"] or ""}
             l1 = {"side": row["side"], "method_primary": row["method_primary"], "domain": row["domain"]}
             try:
-                l2 = extract_l2(client, paper_dict, l1)
+                l2 = extract_l2(l2_client, paper_dict, l1)
                 db.upsert_extraction_l2(conn, row["id"], l2)
                 stats["l2_done"] += 1
             except Exception as e:
@@ -192,9 +196,15 @@ def extract_pending(
                 stats["l2_failed"] += 1
 
     in_tok, out_tok = client.total_tokens
+    cost = client.estimate_cost_usd()
+    if l2_client is not client:   # separate gpt client → add its usage (else already counted)
+        l2_in, l2_out = l2_client.total_tokens
+        in_tok += l2_in
+        out_tok += l2_out
+        cost += l2_client.estimate_cost_usd()
     stats["tokens_in"] = in_tok
     stats["tokens_out"] = out_tok
-    stats["cost_usd"] = round(client.estimate_cost_usd(), 4)
+    stats["cost_usd"] = round(cost, 4)
     return stats
 
 

@@ -29,7 +29,7 @@ from .analyze import brief as brief_mod
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
 from .config import PROJECT_ROOT, load_settings
-from .llm_client import LLMClient
+from .llm_client import LLMClient, opus_client
 from .output import email as email_mod
 from .output import inbox as inbox_mod
 
@@ -114,13 +114,15 @@ def run_daily(target_date: date | None = None,
     ]
     log.info("Step 3/5: deep briefs (Prompt 09) for %d runnable experiments",
              len(engineering_email_ready))
+    # Engineering briefs are the human-facing deliverable → gpt deep model (falls back to `client`).
+    brief_client = opus_client(default=client)
     brief_mod.generate_and_save_briefs(
         target_date,
         engineering_email_ready,
         gap_result["context"]["ai_trends"],
         gap_result["context"]["fin_trends"],
         gap_result["context"]["existing_mappings"],
-        client=client,
+        client=brief_client,
     )
 
     # Mapping/taxonomy maintenance is deliberately excluded from daily delivery.
@@ -136,7 +138,8 @@ def run_daily(target_date: date | None = None,
             "l1_done": ingest_stats.get("l1_done"),
             "l2_done": ingest_stats.get("l2_done"),
             "cost_usd": round(
-                (ingest_stats.get("cost_usd", 0) or 0) + client.estimate_cost_usd(), 4
+                (ingest_stats.get("cost_usd", 0) or 0) + client.estimate_cost_usd()
+                + (brief_client.estimate_cost_usd() if brief_client is not client else 0.0), 4
             ),
             "window_ai": gap_result["context"].get("window_ai_days"),
             "window_fin": gap_result["context"].get("window_fin_days"),
