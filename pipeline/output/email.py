@@ -25,14 +25,8 @@ log = logging.getLogger(__name__)
 def send_daily_email(d: date, payload: dict) -> None:
     s = load_settings()
 
-    n_exp = len(payload.get("email_ready", []))
-    n_leads = len(payload.get("theoretical_leads", []))
-    if n_exp:
-        subject = f"[AlphaGap] {d.isoformat()} · {n_exp} runnable experiments"
-    elif n_leads:
-        subject = f"[AlphaGap] {d.isoformat()} · {n_leads} exploratory leads (0 runnable)"
-    else:
-        subject = f"[AlphaGap] {d.isoformat()} · 0 runnable experiments"
+    n_mech = len(payload.get("research_gaps", []))
+    subject = f"[AlphaGap] {d.isoformat()} · {n_mech} mechanism gaps"
     attachments = _brief_attachments(payload)
     html = _render_html(d, payload)
 
@@ -117,8 +111,6 @@ def _render_html(d: date, p: dict) -> str:
         f"<h1 style='margin-bottom:4px;'>AlphaGap — {d.isoformat()}</h1>",
         _stats_compact_html(p),
         _research_gaps_html(p),
-        _gaps_html(p),
-        _leads_html(p),
         _trends_html(p) if _has_trend_content(p) else "",
         _papers_html(p),
         _mapping_actions_html(p),
@@ -132,22 +124,14 @@ def _render_html(d: date, p: dict) -> str:
 
 def _stats_compact_html(p: dict) -> str:
     s = p.get("stats", {})
-    duplicate_count = len(p.get("duplicates_suppressed", []))
-    duplicate_text = (
-        f" · {duplicate_count} near-dupes folded (diversity)"
-        if duplicate_count else ""
-    )
-    audit = p.get("risk_audit") or {}
-    audit_text = (
-        f" · adversarial audit on ({audit.get('rejected', 0)} rejected)"
-        if audit.get("enabled") else ""
-    )
+    n_mech = len(p.get("research_gaps", []))
+    meta = p.get("research_gap_meta") or {}
+    n_mined = len(meta.get("mined_papers", []))
     return (
         f"<p style='color:#888;font-size:13px;margin-top:0;'>"
         f"{s.get('fetched','?')} papers · {s.get('l1_done','?')} extracted · "
-        f"{len(p.get('theoretical',[]))} hypotheses screened · {len(p.get('engineering',[]))} experiments designed · "
-        f"<b style='color:#000;'>{len(p.get('email_ready',[]))} runnable experiments</b> · "
-        f"${s.get('cost_usd', 0):.4f}{duplicate_text}{audit_text}</p>"
+        f"{n_mined} mined → <b style='color:#000;'>{n_mech} mechanism gaps</b> · "
+        f"${s.get('cost_usd', 0):.4f}</p>"
     )
 
 

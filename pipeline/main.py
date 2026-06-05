@@ -29,7 +29,7 @@ from .analyze import brief as brief_mod
 from .analyze import enrich as enrich_mod
 from .analyze import gaps as gaps_mod
 from .config import PROJECT_ROOT, load_settings
-from .llm_client import LLMClient, opus_client
+from .llm_client import LLMClient
 from .output import email as email_mod
 from .output import inbox as inbox_mod
 
@@ -61,17 +61,22 @@ def run_daily(target_date: date | None = None,
         lookback_days=lookback, max_l1=max_l1, max_l2=max_l2,
     )
 
-    # 2. Experiment-first gap pipeline. Trend/citation maintenance is not on the
-    # critical path: daily output should spend time on runnable experiments.
-    log.info("Step 2/5: experiment-first gap pipeline (04 + 05 + 06 + 07)")
+    # 2. Build context for the mechanism line. The engineering/theoretical gap generation
+    # (04A/04/05/06/07) is RETIRED — the mechanism line (Step 2.5) is now the sole gap producer.
+    # We still build_gap_context because the mechanism line consumes its ai_recent_papers +
+    # fin_field_boundaries, and the email shows top_papers/trends. The dead engineering-gap code
+    # (run_gap_pipeline / prompts 04*-07/09) is kept in the tree but no longer called.
+    log.info("Step 2/5: build context (mechanism-only; engineering gap generation retired)")
     client = LLMClient()
-    # O1 — re-enable mechanism-family trends in daily so the 04A/04/05 prompts (which
-    # are designed around ai_trends) get the rising/emerging-mechanism diversity signal,
-    # not just the same top papers. Adds ~2 LLM calls/day; toggle via settings if budget bites.
-    gap_result = gaps_mod.run_gap_pipeline(
-        target_date, adversarial_review=s.adversarial_gap_review, client=client,
-        include_trends=getattr(s, "daily_include_trends", True),
+    ctx = gaps_mod.build_gap_context(
+        target_date, include_trends=getattr(s, "daily_include_trends", True), client=client,
     )
+    gap_result = {
+        "context": ctx,
+        "theoretical": [], "engineering": [], "accepted": [], "rejected": [],
+        "downgraded": [], "email_ready": [], "theoretical_leads": [],
+        "duplicates_suppressed": [], "risk_audit": {"enabled": False},
+    }
 
     # Record every generated gap in the unified ledger (mechanism-level, brand-free):
     # the readable daily record + the cross-day dedup source (O3).
@@ -105,25 +110,9 @@ def run_daily(target_date: date | None = None,
     except Exception as e:
         log.warning("Step 2.5 research-gap stage skipped: %s", e)
 
-    # Enrich gaps with full paper details from DB (for rendering)
+    # Engineering deep briefs (Prompt 09) are retired with the engineering gap line; the mechanism
+    # line produces its own briefs in Step 2.5. enrich_accepted is a no-op on the empty accepted list.
     enrich_mod.enrich_accepted(gap_result["accepted"])
-    # 3. Deep briefs are generated only after an idea reaches runnable engineering form.
-    engineering_email_ready = [
-        item for item in gap_result["email_ready"]
-        if item.get("type") == "engineering"
-    ]
-    log.info("Step 3/5: deep briefs (Prompt 09) for %d runnable experiments",
-             len(engineering_email_ready))
-    # Engineering briefs are the human-facing deliverable → gpt deep model (falls back to `client`).
-    brief_client = opus_client(default=client)
-    brief_mod.generate_and_save_briefs(
-        target_date,
-        engineering_email_ready,
-        gap_result["context"]["ai_trends"],
-        gap_result["context"]["fin_trends"],
-        gap_result["context"]["existing_mappings"],
-        client=brief_client,
-    )
 
     # Mapping/taxonomy maintenance is deliberately excluded from daily delivery.
     # Promote a proven experiment into mappings only after human review.
@@ -139,7 +128,7 @@ def run_daily(target_date: date | None = None,
             "l2_done": ingest_stats.get("l2_done"),
             "cost_usd": round(
                 (ingest_stats.get("cost_usd", 0) or 0) + client.estimate_cost_usd()
-                + (brief_client.estimate_cost_usd() if brief_client is not client else 0.0), 4
+                + (research_gap_result.get("cost_usd", 0) or 0), 4
             ),
             "window_ai": gap_result["context"].get("window_ai_days"),
             "window_fin": gap_result["context"].get("window_fin_days"),

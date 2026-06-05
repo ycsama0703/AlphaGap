@@ -64,9 +64,13 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
             skipped.append({"arxiv_id": aid, "reason": str(e)[:120]})
             log.warning("research-gap stage: mining %s failed: %s", aid, str(e)[:120])
 
+    # cost of the deep (gpt) client — added to the daily total in main; 0 if it fell back to `client`
+    # (then its spend is already inside client.estimate_cost_usd()).
+    _oc_cost = lambda: round(oc.estimate_cost_usd() if oc is not client else 0.0, 4)
+
     if not pool:
         log.info("research-gap stage: no papers mined (skipped %d)", len(skipped))
-        return {"research_gaps": [], "mined_papers": [], "skipped": skipped}
+        return {"research_gaps": [], "mined_papers": [], "skipped": skipped, "cost_usd": _oc_cost()}
 
     try:
         # AI-PROTAGONIST generator: contributions are AI agent mechanisms / reliability / benchmarks,
@@ -74,7 +78,8 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
         gaps = generate_agent_opportunity_map(pool, client=oc)   # mechanism-gap generation → deep model
     except Exception as e:
         log.warning("research-gap stage: generation failed: %s", str(e)[:160])
-        return {"research_gaps": [], "mined_papers": mined_ids, "skipped": skipped, "error": str(e)}
+        return {"research_gaps": [], "mined_papers": mined_ids, "skipped": skipped,
+                "error": str(e), "cost_usd": _oc_cost()}
 
     for g in gaps:
         g["_source_papers"] = mined_ids
@@ -103,4 +108,4 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     log.info("research-gap stage: %d agent×finance opportunit(ies) from %d paper(s); %d briefs",
              len(gaps), len(mined_ids), sum(1 for g in gaps if g.get("_brief_file")))
     return {"research_gaps": gaps, "mined_papers": mined_ids, "skipped": skipped,
-            "mined_records": pool}
+            "mined_records": pool, "cost_usd": _oc_cost()}
