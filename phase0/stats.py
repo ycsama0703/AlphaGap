@@ -73,7 +73,20 @@ def main():
         cov = sum(1 for r in results if (r.get('agent') or {}).get('n_tool_calls', 0) >= 1)
         print(f"G3 主约束(覆盖) — tasks with ≥1 evidence call: {cov}/{len(results)} = {cov/len(results):.0%}"
               f"  -> {'GO (≥70%)' if cov/len(results) >= 0.7 else 'WEAK (<70%)'}")
-    print("\n(verdict: G1 & G2 both GO → evidence-sufficiency axis has a foundation → proceed.)")
+    # computed verdict (not a hardcoded line)
+    g1 = bool(tot and ci / tot >= 0.15)
+    g2 = bool(k is not None and k >= 0.6)
+    g3 = bool(results and sum(1 for r in results
+                              if (r.get('agent') or {}).get('n_tool_calls', 0) >= 1) / len(results) >= 0.7)
+    if not g1:
+        v = "STOP — the phenomenon is too rare (G1); not worth a paper."
+    elif g1 and g2 and g3:
+        v = "PROCEED — axis is real AND judges agree → build the merged MECH-1+2 pilot."
+    else:
+        miss = ", ".join(n for n, ok in [("G1", g1), ("G2", g2), ("G3", g3)] if not ok)
+        v = (f"SHARPEN & RE-TEST — phenomenon real (G1 ok) but {miss} not met. "
+             "Pin the rubric's ambiguous cases, re-judge with two fresh models, re-check κ.")
+    print(f"\nVERDICT: G1={'GO' if g1 else 'NO'} · G2={'GO' if g2 else 'NO'} · G3={'GO' if g3 else 'NO'}\n  {v}")
 
 
 if __name__ == "__main__":
