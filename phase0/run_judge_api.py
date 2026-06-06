@@ -36,10 +36,18 @@ def main():
     from pipeline.llm_client import LLMClient
     client = LLMClient()
     sheet = (_OUT / "judge_sheet.md").read_text(encoding="utf-8")
-    print(f"judging with provider={client.provider} model={client._model_reasoning} (thinking on)...")
-    out = client.chat_text(system=_SYS, user=sheet, temperature=0.0, reasoning=True, max_tokens=3000)
 
+    def _ask(reasoning):
+        return client.chat_text(system=_SYS, user=sheet, temperature=0.0,
+                                reasoning=reasoning, max_tokens=3000)
+
+    print(f"judging with provider={client.provider} model={client._model_reasoning} (thinking on)...")
+    out = _ask(True)
     labels = {int(m.group(1)): m.group(2).lower() for m in _LINE.finditer(out)}
+    if len(labels) < 55:   # thinking can exhaust the token budget → empty content; retry plain
+        print(f"  only {len(labels)} parsed with thinking — retrying without thinking...")
+        out = _ask(False)
+        labels = {int(m.group(1)): m.group(2).lower() for m in _LINE.finditer(out)}
     lf = _OUT / f"{args.col}_api_labels.txt"
     lf.write_text("\n".join(f"{i}: {labels[i]}" for i in sorted(labels)), encoding="utf-8")
     print(f"parsed {len(labels)} labels (expected 60) -> {lf}  | cost ${client.estimate_cost_usd():.4f}")
