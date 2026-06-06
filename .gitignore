@@ -60,3 +60,7 @@ FIN-FRONTIER-CANDIDATES.md
 GAP-TO-EXPERIMENT-PLAYBOOK.md
 TEST-MODULE-DESIGN.md
 preview_*.html
+
+# phase0 run outputs (regenerable; labels can be force-added)
+phase0/out/
+phase0/seed_tasks.jsonl
