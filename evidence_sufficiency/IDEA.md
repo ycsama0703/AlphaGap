@@ -1,5 +1,18 @@
 # Evidence Sufficiency for Finance Agents — 研究纲领 (IDEA)
 
+> ## 🛑 STOPPED (2026-06-06) — 不继续
+> **死因(机制级)**:gap 的核心 ground truth 是"证据充分性"这个**主观判断**标签。主观标签构念效度不稳——
+> 60 题易样本上跨模型 κ=0.74–0.96(虚高),但**规模化(467 难案例)后,即便最一致的好裁判(Qwen/o3/Gemini)
+> Fleiss 也只 ~0.35–0.47**。benchmark 标签 ≈0.4 立不住;唯一活下来的是"LLM-judge 不可靠/双峰"这种**负面框架**,
+> 而负面/方法学结果在"需创新+正向"的 AI×fin venue **发不了**。
+> P1 结论:(b) benchmark 能区分 agent(57pp)✅,但 (a) 规模化可靠标注 ❌。
+> 反思见 `~/.xp/findings/reflections.jsonl`(gap_id=`agent-evidence-sufficiency-benchmark`);
+> 新规则【标签客观性】已蒸馏进 `knowledge/FAILURE_PREMORTEM.md` #5 + prompts 05/07。
+> **保留**:`phase0/` + `evidence_sufficiency/` 代码作资产(下次做"客观标签的 agent 评测"可直接复用)。
+> 现象本身(agent 答对但无据)是真的,只是**无法被可靠标注成 benchmark**。
+>
+> --- 以下为原纲领,存档 ---
+
 > **一句话主线**:金融 agent "答案对" ≠ "证据足";我们**定义并测量**这条被忽视的轴,发现
 > **前沿 LLM 对它的判断是双峰分裂的**,并提出一个**带明确标准的审计机制**把"高置信无据"压下去。
 >

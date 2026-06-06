@@ -39,6 +39,16 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    A vs other sources? Small share → fixing it can't help much. — caught **evidence-sufficiency** (fixed
    evidence-completeness, but the binding constraint was LLM reasoning over evidence, ~13% on complex).
 
+5. **标签客观性 / Label objectivity (construct validity).** If the gap's **positive result depends on a label
+   that is a SUBJECTIVE judgment** (sufficiency / quality / "good enough" / how-well), its inter-annotator
+   reliability must hold on **HARD cases at scale** — not a small easy sample. *Check:* on a difficulty-stratified
+   scale sample, measure ≥2 independent annotators' (or models') κ. Subjective labels **inflate κ on small/easy
+   samples (0.7–0.95) then collapse (~0.4) at scale** — the benchmark won't stand, and only negative/methodology
+   framings survive (which don't publish in an innovation+positive venue). Prefer **objective/verifiable or
+   ablation-constructed ground truth** over human/LLM adjudication. — caught **agent-evidence-sufficiency-benchmark**
+   (sufficiency κ 0.74→0.40 from easy-60 to hard-467; even Qwen/o3/Gemini ≈0.35–0.47 on hard cases; only the
+   negative "LLM-judge is unreliable / bimodal" framing survived).
+
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +
   their $0 checks, drawing on the list above.
