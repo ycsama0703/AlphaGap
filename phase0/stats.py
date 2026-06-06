@@ -1,25 +1,27 @@
-"""Step 3: the 4 Phase-0 gates, computed from the filled annotation.csv.
+"""The Phase-0 gates, computed from the filled annotation.csv (2 or 3 blind judges).
 
-  python -m phase0.stats           # reads phase0/out/annotation.csv (with suff_A/suff_B filled)
+  python -m phase0.stats
 
-Prints:
-  G1 诊断对象存在 — 2x2 (numeric-correct × evidence-sufficient) on QUALITATIVE claims; want correct-but-insufficient ≥ ~15-20%
-  G2 可学习下限   — Cohen's κ between annotator A and B; want κ ≥ 0.6
+Judge columns: suff_A / suff_B / suff_C (fresh Claude / GPT / DeepSeek — any blind models).
+  G1 诊断对象存在 — numeric-correct × evidence-sufficient (MAJORITY vote of judges) on qualitative claims; want correct-but-insufficient ≥ ~15-20%
+  G2 可学习下限   — inter-judge agreement: pairwise Cohen's κ, and Fleiss' κ when 3 judges; want ≥ 0.6
   G3 主约束(覆盖) — % tasks where the agent retrieved evidence (≥1 tool call); want ≥ 70%
-A claim's sufficiency = annotator A's label (B is only for κ). 'unknown' is treated as insufficient for G1.
+'unknown' counts as not-sufficient for G1; ties → insufficient.
 """
 from __future__ import annotations
 
 import csv
 import json
 from collections import Counter
+from itertools import combinations
 from pathlib import Path
 
 _DIR = Path(__file__).resolve().parent
 _OUT = _DIR / "out"
+JUDGE_COLS = ["suff_A", "suff_B", "suff_C"]
 
 
-def _kappa(a: list[str], b: list[str]) -> float | None:
+def _cohen(a: list[str], b: list[str]) -> float | None:
     pairs = [(x, y) for x, y in zip(a, b) if x and y]
     if not pairs:
         return None
@@ -31,61 +33,95 @@ def _kappa(a: list[str], b: list[str]) -> float | None:
     return round((po - pe) / (1 - pe), 3) if pe != 1 else 1.0
 
 
+def _fleiss(rater_rows: list[list[str]]) -> float | None:
+    """rater_rows = per-item list of each judge's label; only items where ALL judges labelled are used."""
+    items = [r for r in rater_rows if all(r)]
+    if not items:
+        return None
+    n = len(items[0])
+    if any(len(r) != n for r in items) or n < 2:
+        return None
+    cats = sorted({x for r in items for x in r})
+    N = len(items)
+    p_j = {c: 0 for c in cats}
+    P_i = []
+    for r in items:
+        cnt = Counter(r)
+        for c in cats:
+            p_j[c] += cnt[c]
+        P_i.append((sum(v * v for v in cnt.values()) - n) / (n * (n - 1)))
+    for c in cats:
+        p_j[c] /= (N * n)
+    P_bar = sum(P_i) / N
+    P_e = sum(v * v for v in p_j.values())
+    return round((P_bar - P_e) / (1 - P_e), 3) if P_e != 1 else 1.0
+
+
 def main():
     csv_path = _OUT / "annotation.csv"
     if not csv_path.exists():
-        print(f"no {csv_path} — run `python -m phase0.run_phase0` first, then fill suff_A/suff_B")
-        return
+        print(f"no {csv_path} — run the pipeline + ingest judge labels first"); return
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
     res_path = _OUT / "results.jsonl"
     results = [json.loads(l) for l in res_path.read_text().splitlines() if l.strip()] if res_path.exists() else []
+    qual = [r for r in rows if r["kind"] == "qualitative"]
 
-    filled = [r for r in rows if r.get("suff_A")]
-    qual = [r for r in filled if r.get("kind") == "qualitative"]
+    judges = [c for c in JUDGE_COLS if any(r.get(c) for r in qual)]
+    print(f"=== Phase-0 gates ===  ({len(qual)} qualitative claims · judges: {', '.join(judges) or 'NONE'})\n")
+    if not judges:
+        print("no judge labels yet — ingest at least one of suff_A/B/C"); return
 
-    print(f"=== Phase-0 gates ===  ({len(rows)} claims, {len(filled)} annotated, {len(qual)} qualitative)\n")
+    def suff_majority(r) -> bool:
+        votes = [r.get(c) for c in judges if r.get(c)]
+        s = sum(1 for v in votes if v == "sufficient")
+        return s * 2 > len(votes)   # strict majority; tie/unknown → not sufficient
 
-    # G1 — 2x2 on qualitative claims: numeric-correct(task) × evidence-sufficient(claim)
+    # G1 — 2x2 with majority-vote sufficiency
     cell = Counter()
     for r in qual:
         correct = str(r.get("auto_numeric_correct")).lower() == "true"
-        suff = r.get("suff_A", "").strip().lower() == "sufficient"
-        cell[(correct, suff)] += 1
+        cell[(correct, suff_majority(r))] += 1
     tot = sum(cell.values())
-    ci = cell[(True, False)]  # correct answer, INSUFFICIENT evidence  ← the phenomenon
-    print("G1 诊断对象存在 — 2x2 (numeric_correct × evidence_sufficient), qualitative claims:")
+    ci = cell[(True, False)]
+    print("G1 诊断对象存在 — 2x2 (numeric_correct × evidence_sufficient[majority]):")
     print(f"     correct & sufficient   : {cell[(True, True)]}")
     print(f"     correct & INSUFFICIENT : {ci}   ← the bug we care about")
     print(f"     wrong   & sufficient   : {cell[(False, True)]}")
     print(f"     wrong   & insufficient : {cell[(False, False)]}")
+    g1 = bool(tot and ci / tot >= 0.15)
     if tot:
-        share = ci / tot
-        print(f"     correct-but-insufficient share = {share:.0%}  -> {'GO (≥15%)' if share >= 0.15 else 'WEAK (<15%)'}")
+        print(f"     correct-but-insufficient share = {ci/tot:.0%}  -> {'GO (≥15%)' if g1 else 'WEAK (<15%)'}")
     print()
 
-    # G2 — Cohen's kappa A vs B
-    k = _kappa([r.get("suff_A", "") for r in rows], [r.get("suff_B", "") for r in rows])
-    print(f"G2 可学习下限 — Cohen's κ (A vs B) = {k}  -> "
-          f"{'GO (≥0.6)' if (k is not None and k >= 0.6) else ('need B labels' if k is None else 'WEAK (<0.6)')}\n")
+    # G2 — inter-judge agreement
+    print("G2 可学习下限 — inter-judge agreement:")
+    for x, y in combinations(judges, 2):
+        k = _cohen([r.get(x, "") for r in qual], [r.get(y, "") for r in qual])
+        print(f"     Cohen's κ {x}–{y} = {k}")
+    fleiss = None
+    if len(judges) >= 3:
+        fleiss = _fleiss([[r.get(c, "") for c in judges] for r in qual])
+        print(f"     Fleiss' κ (all {len(judges)}) = {fleiss}")
+    gate_k = fleiss if (len(judges) >= 3 and fleiss is not None) else \
+        _cohen([r.get(judges[0], "") for r in qual], [r.get(judges[1], "") for r in qual]) if len(judges) >= 2 else None
+    g2 = bool(gate_k is not None and gate_k >= 0.6)
+    print(f"     gate κ = {gate_k} -> {'GO (≥0.6)' if g2 else ('need ≥2 judges' if gate_k is None else 'WEAK (<0.6)')}\n")
 
-    # G3 — coverage: % tasks with ≥1 tool call
+    # G3 — coverage
+    g3 = False
     if results:
         cov = sum(1 for r in results if (r.get('agent') or {}).get('n_tool_calls', 0) >= 1)
+        g3 = cov / len(results) >= 0.7
         print(f"G3 主约束(覆盖) — tasks with ≥1 evidence call: {cov}/{len(results)} = {cov/len(results):.0%}"
-              f"  -> {'GO (≥70%)' if cov/len(results) >= 0.7 else 'WEAK (<70%)'}")
-    # computed verdict (not a hardcoded line)
-    g1 = bool(tot and ci / tot >= 0.15)
-    g2 = bool(k is not None and k >= 0.6)
-    g3 = bool(results and sum(1 for r in results
-                              if (r.get('agent') or {}).get('n_tool_calls', 0) >= 1) / len(results) >= 0.7)
+              f"  -> {'GO (≥70%)' if g3 else 'WEAK (<70%)'}")
+
     if not g1:
         v = "STOP — the phenomenon is too rare (G1); not worth a paper."
     elif g1 and g2 and g3:
         v = "PROCEED — axis is real AND judges agree → build the merged MECH-1+2 pilot."
     else:
         miss = ", ".join(n for n, ok in [("G1", g1), ("G2", g2), ("G3", g3)] if not ok)
-        v = (f"SHARPEN & RE-TEST — phenomenon real (G1 ok) but {miss} not met. "
-             "Pin the rubric's ambiguous cases, re-judge with two fresh models, re-check κ.")
+        v = f"SHARPEN & RE-TEST — phenomenon real (G1 ok) but {miss} not met; pin the rubric + re-judge."
     print(f"\nVERDICT: G1={'GO' if g1 else 'NO'} · G2={'GO' if g2 else 'NO'} · G3={'GO' if g3 else 'NO'}\n  {v}")
 
 
