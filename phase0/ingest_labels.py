@@ -24,7 +24,7 @@ _LINE = re.compile(r"^\s*(\d+)\s*[:\.\)]\s*(sufficient|insufficient|unknown)", r
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("labels_file", help="text file with `idx: label` lines (a model's reply)")
-    ap.add_argument("--col", default="suff_B", choices=["suff_A", "suff_B", "suff_C"])
+    ap.add_argument("--col", default="suff_B", choices=["suff_A", "suff_B", "suff_C", "suff_D"])
     args = ap.parse_args()
 
     parsed = {}
