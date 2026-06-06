@@ -1,13 +1,13 @@
-"""Ingest a second judge's labels (e.g. GPT) into the annotation sheet's suff_B (or suff_A) column.
+"""Ingest a blind judge's labels (a fresh GPT or fresh Claude) into the annotation sheet's suff column.
 
 Flow:
-  1. paste phase0/out/judge_for_gpt.md into the model, get 60 lines like `12: insufficient`
+  1. paste phase0/out/judge_sheet.md into a FRESH model chat, get 60 lines like `12: insufficient`
   2. save that reply to a text file, e.g. phase0/out/gpt_labels.txt
-  3. python -m phase0.ingest_labels phase0/out/gpt_labels.txt --col suff_B
+  3. python -m phase0.ingest_labels phase0/out/gpt_labels.txt --col suff_B   # suff_A for fresh Claude
   4. python -m phase0.stats
 
 Accepts lines of the form `<idx>: <label>` (label = sufficient|insufficient|unknown); idx = the
-0-based number in judge_for_gpt.md (i.e. qualitative-claim order). Extra prose is ignored.
+0-based number in judge_sheet.md (i.e. qualitative-claim order). Extra prose is ignored.
 """
 from __future__ import annotations
 
