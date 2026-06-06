@@ -69,15 +69,18 @@ def _fund_yoy(c, symbol: str, as_of: str):
     return yoy, cur["revenue"], cur["period_end_date"]
 
 
-def build():
+def build(symbols=None, per_symbol=None, out=None):
+    symbols = symbols or SYMBOLS
+    per_symbol = per_symbol or PER_SYMBOL
+    out = out or OUT
     c = fa.load_client()
     tasks = []
-    for sym in SYMBOLS:
+    for sym in symbols:
         trs = c.get_transcripts(sym, limit=8) or []
         earn = c.get_earnings_history(sym, limit=24) or []
         n = 0
         for tr in sorted(trs, key=lambda t: str(t.get("call_date", "")), reverse=True):
-            if n >= PER_SYMBOL:
+            if n >= per_symbol:
                 break
             fy, q, call_date = tr.get("fiscal_year"), tr.get("quarter"), tr.get("call_date")
             if not (fy and q and call_date):
@@ -105,8 +108,8 @@ def build():
             })
             n += 1
         log.info("built %d tasks for %s", n, sym)
-    OUT.write_text("\n".join(json.dumps(t, ensure_ascii=False) for t in tasks), encoding="utf-8")
-    print(f"wrote {len(tasks)} tasks -> {OUT}")
+    out.write_text("\n".join(json.dumps(t, ensure_ascii=False) for t in tasks), encoding="utf-8")
+    print(f"wrote {len(tasks)} tasks -> {out}")
     return tasks
 
 
