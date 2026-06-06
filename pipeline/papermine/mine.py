@@ -1,15 +1,14 @@
 """L3 paper mining — fetch a paper's FULL TEXT and extract its transferable experiment structure.
 
 The shallow L1/L2 extraction reads only the abstract → one mechanism/paper → shallow gaps. This goes
-deeper: download the PDF (embedded claude-paper scripts), parse full text, and mine the EXPERIMENT
+deeper: download the PDF (httpx) and parse the full text (pypdf), then mine the EXPERIMENT
 STRUCTURE — multiple transferable sub-mechanisms, what the ablations reveal about WHY it works, the
 boundary conditions, and the failure modes the authors found. This is the deep fuel for research-gap
 generation (depth + mechanism composition + frontier).
 
 Headless & dependency-light: download via httpx, parse via pypdf (both pure-python, in the venv) —
-NO node/npm needed (the server has no npm). Mining is the LLM via the AlphaGap LLMClient (opus in the
-hybrid). Runs without an interactive agent → cron-able. The node scripts (download-pdf.cjs/parse-pdf.js,
-MIT, github.com/alaliqing/claude-paper) remain in this dir as a reference fallback but are not used.
+NO node/npm needed (the server has no npm). Mining is the LLM via the AlphaGap LLMClient (the gpt deep
+model in the hybrid). Runs without an interactive agent → cron-able.
 
 Usage: from pipeline.papermine.mine import mine_paper; rec = mine_paper("2603.19835")
 """

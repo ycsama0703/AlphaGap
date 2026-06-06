@@ -6,7 +6,7 @@ the existing engineering-gap path; NEVER breaks the daily run (every step guarde
 design (RESEARCH_GAP_PAPERS, default 2) — see feedback_precision_over_breadth.
 
 Returns a list of research_gap dicts, each tagged with its source paper. Headless/cron-safe (mining =
-node subprocess + DeepSeek). Mining failures (e.g. PDF unavailable) are skipped, not fatal.
+pure-python httpx+pypdf + the gpt deep model). Mining failures (e.g. PDF unavailable) are skipped, not fatal.
 """
 from __future__ import annotations
 
