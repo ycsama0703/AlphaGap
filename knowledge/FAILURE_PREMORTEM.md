@@ -49,6 +49,18 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    (sufficiency κ 0.74→0.40 from easy-60 to hard-467; even Qwen/o3/Gemini ≈0.35–0.47 on hard cases; only the
    negative "LLM-judge is unreliable / bimodal" framing survived).
 
+6. **目标信噪比 / Don't ride a low-SNR return target (study the floor, don't fight it).** If the gap's primary
+   metric ultimately rides on a **low-SNR return/forecast target** (monthly cross-sectional rank-IC ~0.02–0.05),
+   the method's marginal value collapses to ~0 — every relMSE/accuracy ratio → 1.0 against a near-noise ceiling,
+   *regardless of architecture*. This is the deepest, most-repeated killer for finance-ML method gaps. *Check:*
+   the learnability-floor probe (#1) — best single signal must clear rank-IC ≥0.05 before crediting ANY method win.
+   **Prefer gaps whose objective label is NOT a noisy return** — either (a) a deterministic/structural target
+   (accounting identities, equivariance residual, intervention deltas, masked-fact reconstruction), or (b) gaps
+   that **STUDY the noise floor's consequence** (reward-hacking / backtest-overfitting / mis-calibration) rather
+   than try to beat it. — caught **b027/b017/b012** (alpha, sub-floor), **ML-#1** (equivariance, chars floor 0.03),
+   **ML-#6** (LUPI on returns, oracle gain ~0). SURVIVED: **ML-#11** (studies the floor → a controllable hacking-gap,
+   monotone in reward-spec looseness, Spearman +1.00) — the first live gap of the batch.
+
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +
   their $0 checks, drawing on the list above.
