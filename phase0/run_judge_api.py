@@ -22,9 +22,10 @@ _SYS = "你是证据充分性审计员。严格按用户给出的说明完成判
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--col", default="suff_C", choices=["suff_A", "suff_B", "suff_C"])
+    ap.add_argument("--col", default="suff_C", help="any suff_* column (created if missing)")
     ap.add_argument("--model", default="")
     ap.add_argument("--provider", default="")
+    ap.add_argument("--name", default="", help="display name for judges.json (default = model slug)")
     args = ap.parse_args()
 
     if args.provider:
@@ -39,7 +40,7 @@ def main():
 
     def _ask(reasoning):
         return client.chat_text(system=_SYS, user=sheet, temperature=0.0,
-                                reasoning=reasoning, max_tokens=3000)
+                                reasoning=reasoning, max_tokens=6000)
 
     print(f"judging with provider={client.provider} model={client._model_reasoning} (thinking on)...")
     out = _ask(True)
@@ -54,19 +55,28 @@ def main():
     if len(labels) < 55:
         print("WARNING: <55 labels parsed — check raw output below:\n", out[:800]); return
 
-    # ingest
+    # ingest (create the column if it doesn't exist yet)
     import csv
+    import json
     rows = list(csv.DictReader((_OUT / "annotation.csv").open(encoding="utf-8")))
+    cols = list(rows[0].keys())
+    if args.col not in cols:
+        cols.append(args.col)
     qi, n = 0, 0
     for r in rows:
+        r.setdefault(args.col, "")
         if r["kind"] == "qualitative":
             if qi in labels:
                 r[args.col] = labels[qi]; n += 1
             qi += 1
-    cols = list(rows[0].keys())
     with (_OUT / "annotation.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(rows)
-    print(f"ingested {n} labels into {args.col}. Now: python -m phase0.stats")
+    # record which model is in which column
+    jpath = _OUT / "judges.json"
+    reg = json.loads(jpath.read_text()) if jpath.exists() else {}
+    reg[args.col] = args.name or client._model_reasoning
+    jpath.write_text(json.dumps(reg, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"ingested {n} labels into {args.col} ({reg[args.col]}). Now: python -m phase0.stats")
 
 
 if __name__ == "__main__":

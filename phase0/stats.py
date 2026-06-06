@@ -66,10 +66,17 @@ def main():
     results = [json.loads(l) for l in res_path.read_text().splitlines() if l.strip()] if res_path.exists() else []
     qual = [r for r in rows if r["kind"] == "qualitative"]
 
-    judges = [c for c in JUDGE_COLS if any(r.get(c) for r in qual)]
-    print(f"=== Phase-0 gates ===  ({len(qual)} qualitative claims · judges: {', '.join(judges) or 'NONE'})\n")
+    all_suff = [c for c in rows[0].keys() if c.startswith("suff_") and c != "suff_claude_ctx"]
+    judges = [c for c in all_suff if any(r.get(c) for r in qual)]
+    jpath = _OUT / "judges.json"
+    names = json.loads(jpath.read_text()) if jpath.exists() else {}
+    nm = lambda c: names.get(c, c)
+    print(f"=== Phase-0 gates ===  ({len(qual)} qualitative claims · {len(judges)} judges)")
+    for c in judges:
+        print(f"   {c} = {nm(c)}")
+    print()
     if not judges:
-        print("no judge labels yet — ingest at least one of suff_A/B/C"); return
+        print("no judge labels yet — ingest at least one suff_* column"); return
 
     def suff_majority(r) -> bool:
         votes = [r.get(c) for c in judges if r.get(c)]
