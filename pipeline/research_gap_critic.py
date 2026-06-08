@@ -85,11 +85,23 @@ def critique_research_gap(gap: dict, mined: dict | None = None, *, client=None) 
     from pipeline.llm_client import LLMClient
     client = client or LLMClient()
     grounding = _corpus_grounding(gap)
+    # LAYER 0 — KB hard-gate + taxonomy-novelty (deterministic, $0): consult experience + exemplar banks
+    try:
+        from pipeline import kb
+        kb_score = kb.score_against_kb(gap)
+    except Exception as e:
+        kb_score = {"verdict": "n/a", "error": str(e)[:80]}
     mined_numbers = (mined or {}).get("key_quant_results", []) if mined else []
     user = (f"【研究 gap】\n{json.dumps(gap, ensure_ascii=False, indent=2)}\n\n"
+            f"【KB 分层评分(经验库注意点 + 范本库 taxonomy;**advisory,非否决**)】\n"
+            f"{json.dumps(kb_score, ensure_ascii=False)}\n\n"
+            f"读法:considerations 是历史死法提醒,不是自动毙。撞 high-weight 死法但 gap 给了成立的 escape_note(正面反驳)→ "
+            f"不降级、甚至该加分(它可能正是绕过已知陷阱的新点);撞了又给不出/反驳不成立 → 才降为 dressed_up_thin。"
+            f"empty/sparse cell=可能新但查'为何空';crowded cell=novelty 偏低。\n\n"
             f"【corpus_grounding(本地语料是否搜到这些名字)】\n{json.dumps(grounding, ensure_ascii=False)}\n\n"
             f"【挖掘结果里真实报告过的数字(只有这些才是'已知事实',其余数字都是预测)】\n"
             f"{json.dumps(mined_numbers, ensure_ascii=False)}\n\n对抗性审这个 gap,输出 JSON。")
     out = client.chat_json(system=_SYSTEM, user=user, temperature=0.0, reasoning=True, max_tokens=2000) or {}
     out["_corpus_grounding"] = grounding
+    out["_kb_score"] = kb_score
     return out

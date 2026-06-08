@@ -58,8 +58,82 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    (accounting identities, equivariance residual, intervention deltas, masked-fact reconstruction), or (b) gaps
    that **STUDY the noise floor's consequence** (reward-hacking / backtest-overfitting / mis-calibration) rather
    than try to beat it. — caught **b027/b017/b012** (alpha, sub-floor), **ML-#1** (equivariance, chars floor 0.03),
-   **ML-#6** (LUPI on returns, oracle gain ~0). SURVIVED: **ML-#11** (studies the floor → a controllable hacking-gap,
-   monotone in reward-spec looseness, Spearman +1.00) — the first live gap of the batch.
+   **ML-#6** (LUPI on returns, oracle gain ~0). **ML-#11** initially looked like it survived (studies the floor →
+   controllable hacking-gap) but later died on #8 below — "studies the floor" is necessary, NOT sufficient.
+
+7. **承重区分点先验证 / Verify the load-bearing differentiator FIRST.** If the gap's value rests on a claim
+   "**we differ from known work X**" (new mechanism / not-just-Y), that differentiator must have a **direct,
+   passed experiment BEFORE** you build the framing/mitigation/positioning on it — never an unverified side-fact
+   used as foundation. *Check:* name the single experiment that, if it fails, collapses "we ≠ X"; run it in
+   Phase-0. A "we're different" claim with only *indirect/negative* evidence (and no positive falsifiable
+   mechanism prediction) is a red flag. — caught **ML-#11** (the whole "active-agent hacking ≠ multiple testing"
+   rested on F6 "linear can't hack", an unverified misread — F6's gap≈0 came from *finding the real signal* on
+   real labels, never tested on no-signal; once tested, linear hacks → the differentiator collapsed → mechanism
+   fell back to the known optimizer's curse, after weeks of building on it).
+
+8. **换皮的低-SNR 选择 / Re-skinned low-SNR selection = the optimizer's curse.** If the gap's core action is
+   "**select / search over a return (or low-SNR) objective**," then *no matter how it's packaged* (reward hacking,
+   specification gaming, "agent", any AI-safety vocabulary), it will by default **collapse to the classic
+   multiple-testing / optimizer's curse**: `gap ∝ √(log N_eff / T)`, where complexity / nonlinearity / agent
+   architecture only enlarge N_eff. This is the trap door under #6 — "studying the floor" *via selection* is still
+   riding the floor. *Check (strip-down test, do it in Phase-0):* reduce the search space to the **simplest** class
+   (e.g. linear) and **shuffle the labels** (kill all real signal); vary ONLY selection intensity N. If the gap
+   still rises ∝ log N, the mechanism IS multiple testing → **no novel mechanism**, only an application/testbed
+   contribution. — caught **ML-#11** (linear + shuffled + best-of-N → gap ∝ log N, ρ=+0.86; even a single 25-param
+   OLS on pure noise hacks 0.038).
+
+9. **诚实的 null：控制必须看得到同样平凡可得的信息 / Fair control — the null must see the same trivially-available
+   info.** For any "the model represents/recovers X" claim proven by **probe-beats-control** (interpretability /
+   world-model / latent-state probing), the control must have access to **everything trivially available to a
+   baseline**, especially **recent history (lags + deltas)**. Beating a *current-snapshot-only* control is NOT
+   enough — a sequence model can win merely by **encoding recent trend**, which a cheap lagged regression captures
+   too. *Check:* run the probe against a control with k lags + deltas (the fair null) **before** claiming a latent
+   representation; require the probe's Δ-over-*lagged*-control CI > 0, not just over the snapshot control. — caught
+   **ML-#2** (GRU hidden state beat a snapshot control at predicting next-quarter accounting predicates →
+   Phase-0 GO; but once the control got 4 lags+deltas, **0/5 targets survived** — neg_ocf +0.046→−0.023 (lagged
+   control *beat* the probe), profitable's CI crossed 0 → the "internal accounting world-model" was just
+   trend-encoding. Killed cheaply at Phase-1 step 1 by testing this FAIR control first).
+
+10. **闭式最优 = 无归纳偏置余量;承重对比是 vs LEARNED 不是 vs uniform / Closed-form-optimal ⇒ no
+   inductive-bias headroom; the load-bearing baseline is a LEARNED component, not the trivial one.** If the gap's
+   mechanism modification is essentially **hard-coding a closed-form / theorem-optimal form** (inverse-variance,
+   Kalman gain, BLUE/GLS, analytic filter, optimal-transport map) into a **learnable component** (gate, weight,
+   attention, step-size), then a **same-information fair learned baseline will recover it** — there is no
+   publishable *inductive-bias* contribution, only "we hardwired the known optimum." *Check (before building):*
+   ask "**can a same-inputs learned component trivially learn this form?**" If the form is closed-form-optimal and
+   its discriminating feature sits in the learned component's inputs, the answer is yes → drop it. The load-bearing
+   comparison is **hand-derived vs LEARNED (same info)** — NOT vs uniform/plug-in (a strawman). To test in Phase-0,
+   run three-way: hand-derived vs learned(observable loss) vs **oracle**(trained on the latent ground truth =
+   learnability ceiling); require the keyed−learned margin to grow with the activating structure AND clear a real
+   threshold. **Sub-rule (fair baseline must actually train):** when the learned baseline is an MLP, **zero-init on
+   a tanh layer gives dead gradients** (2nd-layer input = tanh(0)=0 ⇒ weight grads ≡ 0) — it freezes at init and
+   *fabricates* a "hand-derived wins." Before any "hand-form > learned" claim, verify the learned baseline's loss
+   actually decreased / weights actually moved. — caught **B1 volatility-keyed WLS forget-gate** (Wang et al.
+   ICLR'25: linear-attn forget-gate = WLS weight; keyed to 1/σ̂² under GARCH. Mechanism real — keyed > uniform
+   +2.7%, scales with persistence, shuffle-dissociated — but a same-info learned gate matched it *exactly*
+   (keyed−learned ≈ 0.000), oracle beat it; inverse-variance is just learnable. Effect negligible anyway
+   (predictive MSE 0.18%). Nearly mis-called GO due to the zero-init dead-gradient artifact freezing the learned
+   baseline; small-random init exposed the tie. Cheap $0 kill).
+
+11. **可滤波潜变量 = 滤波器 incumbent,两头堵死 / Filterable latent ⇒ the classical filter is the incumbent;
+   dead on both horns.** If the gap's **target quantity is a filterable latent** — a hidden state / conditional
+   variance / posterior belief that has a **known optimal estimator** (Kalman filter, HMM forward algorithm,
+   GLS/BLUE, particle filter, EM) — the AI-mechanism modification is **pre-dead**: (horn 1) on the structure that
+   makes the latent *computable*, the classical filter already attains the optimum, so the mechanism can at best
+   **tie** (no headroom); (horn 2) on the structure where the latent is *not* computable (intractable / infinite
+   state), there is **no ground-truth label** to supervise or validate the mechanism. *Check (two $0 paper-stage
+   questions, before any build):* ① does the target quantity have a classical optimal filter/estimator? ② does the
+   method's supervision label exist on the **real target data**, or only in simulation? If ① yes **or** ② only-in-sim
+   → do not green-light. *To confirm empirically:* fit a K-state HMM / Kalman filter and measure how well its
+   filtered estimate recovers the true latent (R² > ~0.95 ⇒ incumbent already solves it). **The surviving AI-mechanism
+   shape must target something WITHOUT a classical optimum** — open-ended generation / policy / a representation that
+   is *itself the product* — NOT "estimate a filterable latent." Same root as #8 (closed-form-optimal ⇒ no
+   inductive-bias headroom). — caught **B1** (volatility-keyed forget gate = inverse-variance ≈ Kalman/GLS; a learned
+   gate recovered it, margin 0.000) and **A1** (transformer residual belief ≈ HMM forward-algorithm posterior; a
+   fitted-HMM forward filter recovered the true belief R²=0.99/0.998, oracle belief predicted the precursor at AUC
+   0.50, and real markets have no belief label). This is the **same "filter incumbent" death** as the quant-stats
+   line (HAR / GARCH-EVT / Ledoit-Wolf / ACI already solve the target). *(Note: this is the general rule; #10 above —
+   numbered 8 in spirit — is the special case of hard-coding the closed form into a learnable gate.)*
 
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +

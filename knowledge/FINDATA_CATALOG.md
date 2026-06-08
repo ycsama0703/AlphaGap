@@ -26,8 +26,14 @@
   `get_analyst_estimates`, `get_esg_ratings`) which embeds today's info — using them in a backtest as-of a
   past date is look-ahead. The harness PIT-truncates *dated list* rows only; snapshot endpoints it cannot
   fix. Column **PIT** below flags this: `hist` = dated history (safe), `snap` = current-only (look-ahead risk).
-- **History depth varies.** `ohlc` with `start=` → long daily history. Statement/ratio lists default to a
-  few periods (`limit` param, e.g. `get_fundamentals_history(limit=…)`); intraday = 1min/5min only.
+- **History depth varies — ⚠️ DEFAULT `limit` IS SMALL, IT IS *NOT* THE DATA DEPTH.** `ohlc` with `start=` →
+  long daily history. Statement/ratio lists **default to a few periods** (`get_fundamentals_history` default
+  `limit=8`) — **this is a paging default, not the available history.** NEVER infer "the data is shallow" from a
+  default call; **always pass a large `limit` and measure.** Measured truth (2026-06): `get_fundamentals_history`
+  returns **~160 quarterly statements per name back to 1985** (income/balance/cashflow), and `period="fy"` → ~40
+  annual years — i.e. **deep 40-year fundamentals exist**. (A prior triage wrongly concluded "fundamentals only
+  reach ~2021 / 3–8 rows" by reading the default `limit=8` — exactly the trap this bullet warns against.)
+  `period=quarter|fy` (NOT `annual` — that 400s). Intraday = 1min/5min only.
 - **`get_*` returns `None`/`[]` on failure or unknown symbol** (never raises) — always None-guard.
 
 **Decision rule for a gap's `findata_native`:**
@@ -54,7 +60,7 @@ historical PIT — then it is **not** findata-native as-is; say so and name the 
 
 | endpoint | args | returns | freq | PIT | good for |
 |---|---|---|---|---|---|
-| `get_fundamentals_history` | symbol, statement=income\|balance\|cashflow, period=quarter\|fy\|all, limit=8 | historical statement lines | quarterly/annual | hist | value, quality, accruals, growth inputs |
+| `get_fundamentals_history` | symbol, statement=income\|balance\|cashflow, period=quarter\|fy\|all, **limit=8 (default — RAISE IT)** | historical statement lines — **~160 quarters back to 1985** w/ `limit≥200` (use `period=fy` for ~40 annual yrs; `annual` 400s) | quarterly/annual | hist | value, quality, accruals, growth inputs, **statement-evolution sequences** |
 | `get_fundamentals` | symbol | latest combined snapshot | — | **snap** | current only — NOT for backtest as-of |
 | `get_key_metrics` | symbol | `[{period, pe, pb, ps, ev_ebitda, debt_to_equity, roe, ...}]` | per period | hist* | **value (pe/pb/ps), quality (roe), leverage** |
 | `get_ratios` | symbol | financial ratios per period | per period | hist* | margins, turnover, liquidity ratios |

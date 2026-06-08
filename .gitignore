@@ -66,3 +66,13 @@ phase0/out/
 phase0/seed_tasks.jsonl
 
 evidence_sufficiency/out/
+
+# fin_kb: keep runtime KB (exemplars_full.json + experience.jsonl) + builders; exclude bulky intermediates
+fin_kb/parsed/
+fin_kb/en/
+fin_kb/batches/
+fin_kb/pilot/
+fin_kb/records/
+fin_kb/*.sqlite
+fin_kb/*.en.json
+fin_kb/corpus.jsonl

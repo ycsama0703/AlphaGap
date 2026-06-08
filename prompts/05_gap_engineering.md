@@ -105,6 +105,10 @@
      * run_wallclock: **机器**跑完一轮的墙钟时间（不是人工时），如 "几分钟 (CPU)", "~2 GPU-hours", "~6h (单 GPU)"
      * 【API$】api_cost_usd: 跑完整个实验预计的 LLM API 美元成本（数字，如 2、150；纯统计/回测无 LLM 调用填 0）
      * 【数据】findata_native: true/false —— 整个实验（不只 Phase 0）能否仅靠 findata / 自包含数据跑通
+       - **🔒 硬规则(数据断言必须先查/先跑)**:任何"findata 有没有某类数据 / 数据多深 / 字段叫什么"的断言,
+         **必须先引 `knowledge/FINDATA_CATALOG.md` 的具体行,或先实跑 endpoint(带大 limit)确认**——
+         **严禁凭记忆/印象下数据结论**。本线已三次栽在这:F6 没验证当真、`limit=8` 当数据深度、把 findata 当"无文本"。
+         默认 limit 小 ≠ 数据少;"我以为没有"≠ 真没有。说不清就去跑。
        - **判定前严格对照 `knowledge/FINDATA_CATALOG.md`，不要凭印象。** findata = 7851 只美股的
          价格(ohlc) + 基本面(statements/ratios/key_metrics/growth) + 宏观(treasury/economic) +
          分析师 + 持仓/insider + 文本(filings/transcripts/news)。**FF/特征因子可由横截面自行构造,不算缺数据。**
@@ -120,7 +124,16 @@
      * 【主约束体检】机制修的 failure 源,是不是 baseline 的**主**误差源?(修非主导源净收益≈0)
      * 【标签客观性】机制的【正向结果】是否依赖一个**主观判断**标签(够不够/好不好/质量/充分性)?若是 → 该标签在**难案例×规模**上的标注者一致性(κ)能成立吗?主观标签在小/易样本 κ 虚高(0.7-0.95),规模化难案例塌到 ~0.4 → benchmark 立不住,只剩负面框架,正向 venue 发不了。优先要求 ground truth 客观可核验或消融构造,而非靠人/LLM 裁定。
      * 【目标信噪比】gap 的主指标是否最终骑在**低 SNR 的收益/预测目标**上(月频截面 rank-IC ~0.02-0.05)?若是 → 方法边际价值会塌成 ~0(各种 ratio→1.0,撞近噪声天花板,架构再好也没用),这是金融-ML gap **最常见的死法**。优先挑**标签不是噪声收益**的:(a) 确定性/结构性目标(会计恒等、等变残差、介入 delta、掩码事实重建),或 (b) **研究噪声地板的后果**(reward-hacking/回测过拟合/校准失败)而非去打它。
+     * 【承重区分点先验证】gap 价值是否押在"**我们 ≠ 已知工作 X**"(新机制/不只是 Y)上?若是 → 必须能点名"哪一个直接实验若失败就推翻这个区分",且该实验应在 Phase-0 先跑,而非搭完框架再验。只有**否定式/间接**证据(如"它不像 X")、没有正面可证伪的机制预测 → 标红。(踩坑:ML-#11 把"≠多重检验"建在一个未验证的旁证上,最后塌掉。)
+     * 【换皮的低-SNR 选择】gap 的核心动作是否是"**在收益/低 SNR 目标上做选择/搜索**"?若是 → 无论包装成 reward-hacking / specification-gaming / agent / 任何 AI-safety 词,**默认会塌回经典多重检验 / optimizer's curse**(gap∝√(log N_eff/T),复杂度/非线性/架构只是放大 N_eff)。这是【目标信噪比】下的暗门——"研究地板"若靠**选择**实现,仍是骑地板。Phase-0 剥皮测试:搜索空间砍到最简(线性)+ 打乱标签(去真信号),只留选择强度 N,看 gap 是否仍 ∝log N;是 → 无新机制,只剩 testbed 级贡献。
+     * 【闭式最优 = 无归纳偏置余量】gap 的机制改动是否本质是"把一个**闭式/定理最优的形式**(逆方差加权 / Kalman 增益 / BLUE/GLS / 解析滤波 / 最优传输映射)硬编码进一个**可学组件**(gate / 权重 / attention / step-size)"?若是 → 一个**同信息(same inputs)的公平 LEARNED 基线基本都能学到这个形式**,**没有可发表的 inductive-bias 贡献**,只剩"我们把已知最优解硬接线"。开跑前先问:"同输入的学习组件能否轻易学到此形式?"(该形式闭式最优 + 其判别特征在该组件输入里 → 能 → 毙)。**承重对比必须是 hand-derived vs LEARNED(同信息),不是 vs uniform/plug-in 稻草人**;Phase-0 跑三方:hand-derived / learned(观测损失) / oracle(用隐变量真值训=可学性天花板),要求 keyed−learned 余量随激活结构放大且过实阈值。**子规则:学习基线必须确认真在训练**——MLP 用零初始化在 tanh 层会死梯度(第二层输入=tanh(0)=0,权重梯度恒0),冻在初值伪造"手工形式赢";宣布任何"hand>learned"前先核实学习基线损失确有下降。(踩坑:B1 波动率键控 WLS 门——机制真〔keyed>uniform +2.7% 随持续度放大、shuffle 崩〕但同信息学习门精确追平〔差距 0.000〕,逆方差只是可学;且差点被死梯度 bug 骗。)
+     * 【可滤波潜变量 = 滤波器 incumbent,两头堵死】gap 的**目标量是不是一个"可滤波潜变量"**(隐状态 / 条件方差 / 后验信念,且有**已知最优估计器**:Kalman 滤波 / HMM 前向算法 / GLS-BLUE / 粒子滤波 / EM)?若是 → 这个 AI-机制改动**预死**:(horn 1)在让它**可计算**的结构上,经典滤波器已取最优,AI 机制顶多**打平**(无余量);(horn 2)在它**不可计算**的结构上(不可处理/无穷状态),**没有 ground-truth label** 来监督/验证这个方法。两道 $0 纸面闸:① 目标量有没有经典最优滤波器?② 方法的监督 label 在**真实目标数据**上存不存在,还是只在模拟里有?① 是 **或** ② 只在模拟里 → 不立项。实测确认:拟合 K-state HMM/Kalman,看其滤波估计恢复真潜变量的 R²(>0.95 = incumbent 已解)。**活得下来的 AI-机制形状必须针对没有经典最优解的东西**(开放式生成 / policy / 表征本身即产物),而非"估计一个可滤波潜变量"。(踩坑:B1 逆方差门≈Kalman/GLS〔学习门追平〕、A1 残差 belief≈前向算法后验〔拟合 HMM 恢复 R²0.99,真实市场无 belief label〕,皆此死法;与上一条同源。)
      哪条明显过不了 → 在 key_risks 里标红,significance/可行性据此下调。
+   - publishable_shape: **可发表形状(对照 `knowledge/PUBLISHABLE_SHAPES.md`,250 篇已接收 fin×AI 论文蒸馏)**。声明这个 gap 属于哪种已被接收的形状,并据此自检:
+     * 形状取值:A 新benchmark揭示SOTA失败 / B 决策感知·约束优化 / C 机制迁移到硬金融属性 / D LLM行为审计 / E 结构感知表征(数据病理) / F agent系统+评测 / theory。
+     * **优先产出 B / E / D**(高 headroom、低撞车、不踩收益跑步机);**E 里的 PIT/restatement 是 250 篇里仅 3 篇的白区,强烈鼓励**。
+     * **finance_property:必须点名这个 gap 倚重的金融结构属性**(non-stationarity / heavy-tails / no-arbitrage-accounting / microstructure / PIT-restatement)。**说不出 = none-generic → 这是"就是个应用"的弱类(27 篇机制迁移里 7 篇 none-generic 全是弱的),应直接降权/不产出。** 机制迁移(C)仅当该属性是 baseline 失败之因、且可消融(去掉它→优势塌)才产。
+     * **入闸过滤(硬):若 gap 的唯一卖点是"噪声收益上的 Sharpe/收益预测差"(低-SNR),拒绝产出。** 赢点须来自被点名的金融属性,或一个高-SNR 的决策/结构目标。
    - key_risks: 1-3 条可能踩坑（数据可得性、训练成本、方法适配性）
    - anchor_papers: ai 和 fin 侧各自的锚定论文
 3. 必须避免：
