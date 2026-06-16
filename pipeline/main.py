@@ -98,7 +98,7 @@ def run_daily(target_date: date | None = None,
     research_gap_result = {"research_gaps": [], "mined_papers": [], "skipped": []}
     try:
         from .analyze import research_gap_stage
-        n_rg = getattr(s, "research_gap_papers", 2)
+        n_rg = getattr(s, "research_gap_papers", 4)
         if n_rg > 0:
             log.info("Step 2.5: deep research-gap generation (mine top %d papers)", n_rg)
             research_gap_result = research_gap_stage.generate_daily_research_gaps(

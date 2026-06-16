@@ -3,7 +3,9 @@
 Picks the day's top-N anchor AI papers, deep-mines each (L3 full text → mechanisms/ablations/
 boundaries), and generates runnable experiment slices gated by the empirical pre-mortem. Additive to
 the existing engineering-gap path; NEVER breaks the daily run (every step guarded). Volume is small by
-design (RESEARCH_GAP_PAPERS, default 2) — see feedback_precision_over_breadth.
+design (RESEARCH_GAP_PAPERS, default 4) and the anchors are a MIX of fresh-arxiv + peer-reviewed
+conference (OpenReview) papers, interleaved — so gaps don't collapse onto agent-heavy recent arxiv.
+See feedback_precision_over_breadth.
 
 Returns a list of research_gap dicts, each tagged with its source paper. Headless/cron-safe (mining =
 pure-python httpx+pypdf + the gpt deep model). Mining failures (e.g. PDF unavailable) are skipped, not fatal.
@@ -21,6 +23,18 @@ def _arxiv_id(paper: dict) -> str | None:
     # arxiv-format id like 2606.03985 (HF Daily papers store the arxiv id as `id`)
     import re
     return pid if re.fullmatch(r"\d{4}\.\d{4,5}", pid) else None
+
+
+def _openreview_pdf_url(paper: dict) -> str | None:
+    """Conference look-back papers have no arxiv PDF, but their full text IS on OpenReview
+    (openreview.net/pdf?id=<note_id>), and fetch_fulltext downloads any http URL — so they ARE
+    L3-mineable. id is 'openreview:<note_id>'. This lets the mechanism line anchor on peer-reviewed
+    conference work, not only agent-heavy recent arxiv (breaks the repetitive-gap monoculture)."""
+    if not paper.get("peer_reviewed_conference"):
+        return None
+    pid = str(paper.get("id") or "")
+    note = pid.split(":", 1)[1] if pid.startswith("openreview:") else ""
+    return f"https://openreview.net/pdf?id={note}" if note else None
 
 
 def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str = "latest", client=None) -> dict:
@@ -45,24 +59,36 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
 
     fin_fields = ctx.get("fin_field_boundaries") or ctx.get("fin_field_boundaries_all") or []
     candidates = ctx.get("ai_recent_papers", []) or []
+    # Mine a MIX of fresh-arxiv and peer-reviewed conference anchors, INTERLEAVED. Conference papers
+    # are appended at the back of ai_recent_papers, so a naive "top-N" only ever mined fresh agent-heavy
+    # arxiv → repetitive gaps. Interleaving guarantees conference anchors get mined too. Both are L3
+    # full-text mined (arxiv PDF or OpenReview PDF).
+    fresh = [(p, _arxiv_id(p)) for p in candidates if _arxiv_id(p)]
+    conf = [(p, _openreview_pdf_url(p)) for p in candidates
+            if not _arxiv_id(p) and _openreview_pdf_url(p)]
+    order, fi, ci = [], 0, 0
+    while fi < len(fresh) or ci < len(conf):
+        if fi < len(fresh):
+            order.append(fresh[fi]); fi += 1
+        if ci < len(conf):
+            order.append(conf[ci]); ci += 1
     pool, mined_ids, skipped = [], [], []
-    for p in candidates:
+    for p, mine_arg in order:
         if len(pool) >= n_papers:
             break
-        aid = _arxiv_id(p)
-        if not aid:
-            continue
         try:
-            rec = mine_paper(aid, client=oc)   # L3 full-text mining → opus
+            rec = mine_paper(mine_arg, client=oc)   # L3 full-text mining (arxiv or OpenReview) → opus
             n_sub = len(rec.get("transferable_sub_mechanisms") or [])
             if n_sub == 0:
-                skipped.append({"arxiv_id": aid, "reason": "no sub-mechanisms mined"}); continue
+                skipped.append({"id": mine_arg, "reason": "no sub-mechanisms mined"}); continue
             rec["_title"] = p.get("title", "")
-            pool.append(rec); mined_ids.append(aid)
-            log.info("research-gap stage: mined %s (%d sub-mechanisms)", aid, n_sub)
+            rec["_is_conference"] = bool(p.get("peer_reviewed_conference"))
+            pool.append(rec); mined_ids.append(rec.get("arxiv_id") or mine_arg)
+            log.info("research-gap stage: mined %s (%d sub-mech, conf=%s)",
+                     rec.get("arxiv_id") or mine_arg, n_sub, rec["_is_conference"])
         except Exception as e:
-            skipped.append({"arxiv_id": aid, "reason": str(e)[:120]})
-            log.warning("research-gap stage: mining %s failed: %s", aid, str(e)[:120])
+            skipped.append({"id": mine_arg, "reason": str(e)[:120]})
+            log.warning("research-gap stage: mining %s failed: %s", mine_arg, str(e)[:120])
 
     # cost of the deep (gpt) client — added to the daily total in main; 0 if it fell back to `client`
     # (then its spend is already inside client.estimate_cost_usd()).

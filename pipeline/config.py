@@ -68,7 +68,7 @@ def load_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         dry_run=os.getenv("DRY_RUN", "false").lower() == "true",
         adversarial_gap_review=os.getenv("ADVERSARIAL_GAP_REVIEW", "false").lower() == "true",
-        research_gap_papers=int(os.getenv("RESEARCH_GAP_PAPERS", "2")),
+        research_gap_papers=int(os.getenv("RESEARCH_GAP_PAPERS", "4")),
     )
 
 
