@@ -58,6 +58,11 @@ def make_client(provider: str | None = None):
         return (OpenAI(base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
                        api_key=os.getenv("DEEPSEEK_API_KEY")),
                 os.getenv("DEEPSEEK_MODEL_DEFAULT", "deepseek-v4-flash"), provider)
+    if provider == "openrouter":   # the strong "deep" model (gpt-chat-latest) — cross-model check
+        return (OpenAI(base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+                       api_key=os.getenv("OPENROUTER_API_KEY")),
+                os.getenv("ROLLOUT_OPENROUTER_MODEL") or os.getenv("OPENROUTER_MODEL_OPUS", "openai/gpt-chat-latest"),
+                provider)
     raise ValueError(f"rollout.make_client: unsupported provider {provider!r}")
 
 

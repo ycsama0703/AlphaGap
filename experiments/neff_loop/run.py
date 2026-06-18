@@ -273,8 +273,10 @@ def llm_loop(run, blk, rounds, batch, seed):
             shown = "\n".join(f"  {f}   (rank-IC {ic:+.3f})" for f, ic in top)
             user = (f"Your best factors so far and their in-sample rank-IC:\n{shown}\n\n"
                     f"Propose {batch} NEW factor formulas to maximize rank-IC. Build on what works.")
-        txt = run.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
-                       step=f"s{seed}r{r}", max_tokens=700)
+        msgs = [{"role": "system", "content": sys_p}, {"role": "user", "content": user}]
+        txt = run.chat(msgs, step=f"s{seed}r{r}", max_tokens=700)
+        if not txt.strip():                              # some models intermittently return empty — retry once
+            txt = run.chat(msgs, step=f"s{seed}r{r}-retry", max_tokens=700)
         for line in txt.splitlines():
             s = line.strip().strip("`").lstrip("0123456789.)-• ").strip()
             node = parse_formula(s)
