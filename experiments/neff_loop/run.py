@@ -22,6 +22,7 @@ import ast
 import glob
 import json
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -50,7 +51,15 @@ def build_panel(client, start="2016-01-01") -> pd.DataFrame:
     rows = []
     for sym in UNIVERSE:
         try:
-            r = client.get_ohlc(sym, "1d", start, "")
+            r = None
+            for attempt in range(4):                  # retry/backoff: findata rate-limits (429)
+                try:
+                    r = client.get_ohlc(sym, "1d", start, "")
+                except Exception:
+                    r = None
+                if isinstance(r, dict) and r.get("bars"):
+                    break
+                time.sleep(2.0 * (attempt + 1))
             bars = (r or {}).get("bars") if isinstance(r, dict) else None
             if not bars:
                 continue
@@ -73,6 +82,7 @@ def build_panel(client, start="2016-01-01") -> pd.DataFrame:
             feat["fwd"] = mc.pct_change(1).shift(-1)      # next-month return
             feat["sym"] = sym; feat = feat.reset_index()
             rows.append(feat)
+            time.sleep(0.4)                           # throttle: be polite to shared findata
         except Exception as e:
             print(f"  panel: {sym} skipped ({str(e)[:60]})")
             continue
