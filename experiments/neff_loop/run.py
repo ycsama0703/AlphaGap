@@ -196,6 +196,51 @@ def participation_ratio(vecs, K, rng):
 
 
 # ----------------------------------------------------------------- the two streams
+def _nodes(node):
+    if node[0] in ("f", "c"): return [node]
+    if node[0] == "u": return [node] + _nodes(node[2])
+    return [node] + _nodes(node[2]) + _nodes(node[3])
+
+
+def _mutate(node, rng, max_depth=4):
+    target = _nodes(node)[rng.integers(len(_nodes(node)))]
+    new = rand_tree(rng, 0, max_depth - 1)
+    def rec(cur):
+        if cur is target: return new
+        if cur[0] in ("f", "c"): return cur
+        if cur[0] == "u": return ("u", cur[1], rec(cur[2]))
+        return ("b", cur[1], rec(cur[2]), rec(cur[3]))
+    return rec(node)
+
+
+def gp_loop(blk, gens, pop, seed):
+    """Elitist GP — a MECHANICAL search that ALSO refines toward in-sample rank-IC (keeps top elites,
+    mutates them). This is the fair baseline: it exploits fitness like the LLM loop does, so if the LLM
+    still spans FEWER independent dims than this, the extra collapse is AI-specific (not just refinement).
+    Collect UNIQUE evaluated formulas' z-vecs across the trajectory (premortem-#12: distinct, not nominal)."""
+    rng = np.random.default_rng(5000 + seed)
+    pop_trees = [rand_tree(rng) for _ in range(pop)]
+    seen, vecs = {}, []
+
+    def record(node):
+        c = canon(node)
+        if c in seen:
+            return seen[c]
+        sig = ev(node, blk); ic = blk.ic(sig); v = blk.zvec(sig)
+        seen[c] = ic
+        if v is not None: vecs.append(v)
+        return ic
+
+    for _ in range(gens):
+        fits = np.array([record(ind) for ind in pop_trees])
+        elite = [pop_trees[i] for i in np.argsort(-fits)[:max(1, pop // 5)]]
+        newP = list(elite)
+        while len(newP) < pop:
+            newP.append(_mutate(elite[rng.integers(len(elite))], rng))
+        pop_trees = newP
+    return vecs
+
+
 def random_stream(blk, n_unique, rng):
     seen, vecs = set(), []
     tries = 0
@@ -275,34 +320,36 @@ def main():
     for seed in range(args.seeds):
         rng = np.random.default_rng(1000 + seed)
         llm_vecs = llm_loop(run, blk, args.rounds, args.batch, seed)
-        rand_vecs = random_stream(blk, max(len(llm_vecs), 20), rng)
-        if len(llm_vecs) < 5 or len(rand_vecs) < 5:
-            rows.append({"seed": seed, "error": "too few", "llm": len(llm_vecs), "rand": len(rand_vecs)})
+        gp_vecs = gp_loop(blk, args.rounds, pop=60, seed=seed)          # refining mechanical baseline
+        rand_vecs = random_stream(blk, max(len(llm_vecs), 20), rng)     # exploration upper bound (context)
+        if len(llm_vecs) < 5 or len(gp_vecs) < 5:
+            rows.append({"seed": seed, "error": "too few", "llm": len(llm_vecs), "gp": len(gp_vecs)})
             continue
-        K = min(len(llm_vecs), len(rand_vecs))
-        llm_if = float(np.mean([participation_ratio(llm_vecs, K, rng)[1] for _ in range(20)]))
-        rnd_if = float(np.mean([participation_ratio(rand_vecs, K, rng)[1] for _ in range(20)]))
-        rows.append({"seed": seed, "K": K, "llm_unique": len(llm_vecs), "rand_unique": len(rand_vecs),
-                     "llm_indep_frac": round(llm_if, 4), "rand_indep_frac": round(rnd_if, 4),
-                     "gap_rand_minus_llm": round(rnd_if - llm_if, 4)})
-        print(f"  seed {seed}: K={K} llm_indep={llm_if:.3f} rand_indep={rnd_if:.3f} "
-              f"gap={rnd_if-llm_if:+.3f} (llm_uniq={len(llm_vecs)})")
+        K = min(len(llm_vecs), len(gp_vecs), len(rand_vecs))
+        f = lambda vs: float(np.mean([participation_ratio(vs, K, rng)[1] for _ in range(20)]))
+        llm_if, gp_if, rnd_if = f(llm_vecs), f(gp_vecs), f(rand_vecs)
+        rows.append({"seed": seed, "K": K, "llm_unique": len(llm_vecs), "gp_unique": len(gp_vecs),
+                     "llm_indep": round(llm_if, 4), "gp_indep": round(gp_if, 4), "rand_indep": round(rnd_if, 4),
+                     "gap_gp_minus_llm": round(gp_if - llm_if, 4)})
+        print(f"  seed {seed}: K={K} llm={llm_if:.3f} gp={gp_if:.3f} rand={rnd_if:.3f} "
+              f"| gp-llm={gp_if-llm_if:+.3f} (llm_uniq={len(llm_vecs)} gp_uniq={len(gp_vecs)})")
 
     ok = [r for r in rows if "error" not in r]
-    gaps = [r["gap_rand_minus_llm"] for r in ok]
+    gaps = [r["gap_gp_minus_llm"] for r in ok]            # KEY = LLM vs GP (both refine) → AI-specific
     mean_gap = float(np.mean(gaps)) if gaps else 0.0
     consistent = bool(ok) and all(g > 0 for g in gaps)
     margin = 0.05
     if not ok:
         verdict = "NO USABLE ROWS — fix proposer/parse."
     elif consistent and mean_gap >= margin:
-        verdict = (f"GO — the iterative LLM loop spans materially FEWER independent dimensions than random "
-                   f"search at matched distinct count (mean gap +{mean_gap:.2f}, consistent) → AI-specific "
-                   f"mode collapse has a pulse in the loop.")
+        verdict = (f"GO — the LLM loop spans materially FEWER independent dimensions than an elitist GP that "
+                   f"ALSO refines toward IC (mean gp-llm +{mean_gap:.2f}, consistent across seeds, matched "
+                   f"distinct count) → the collapse is AI-SPECIFIC, not just a refinement effect.")
     else:
-        verdict = (f"INCONCLUSIVE (not a kill) — mean(rand_indep - llm_indep)={mean_gap:+.2f}, consistent="
-                   f"{consistent}. The LLM loop is not measurably more clustered than random here. Caveat: "
-                   f"local {run.model} is one model; weaker/stronger models may differ.")
+        verdict = (f"INCONCLUSIVE / NOT AI-specific — mean(gp_indep - llm_indep)={mean_gap:+.2f}, consistent="
+                   f"{consistent}. The LLM loop is NOT measurably more clustered than a refining GP → the low "
+                   f"N_eff is a refinement effect (any fitness-exploiting loop), not LLM-specific. (LLM still "
+                   f"<< random — but that's refinement vs exploration, not the publishable claim.)")
     print("\nVERDICT:", verdict)
     m = run.finish(verdict=("go" if (consistent and mean_gap >= margin) else "inconclusive"),
                    metrics={"mean_gap": mean_gap, "rows": rows})
