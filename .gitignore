@@ -76,3 +76,4 @@ fin_kb/records/
 fin_kb/*.sqlite
 fin_kb/*.en.json
 fin_kb/corpus.jsonl
+runs/

@@ -205,6 +205,25 @@ def _load_llm_settings(provider: str) -> dict:
                 else generic_output_cost
             ),
         }
+    if provider in ("local", "ollama"):
+        # Local GPU rollout engine (ollama, OpenAI-compatible). Free; runs on luyao4's 5080.
+        # api_key is a dummy (ollama ignores it). One local model serves all tiers.
+        m = generic_default or os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+        return {
+            "api_key": os.getenv("OLLAMA_API_KEY", "ollama"),
+            "base_url": os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
+            "model_default": m,
+            "model_reasoning": generic_reasoning or m,
+            "model_brief": generic_brief or m,
+            "http_referer": None,
+            "app_title": None,
+            "input_cost_per_m": 0.0,
+            "output_cost_per_m": 0.0,
+            "reasoning_input_cost_per_m": 0.0,
+            "reasoning_output_cost_per_m": 0.0,
+            "brief_input_cost_per_m": 0.0,
+            "brief_output_cost_per_m": 0.0,
+        }
     if provider != "deepseek":
         raise ValueError(f"Unsupported LLM_PROVIDER={provider!r}")
 
