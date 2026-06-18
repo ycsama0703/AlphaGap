@@ -31,6 +31,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent.parent
 FEATURES = ["mom", "rev1", "vol", "size", "maxret"]   # the char vocabulary both streams build on
 PANEL_CACHE = Path(__file__).resolve().parent / "panel.csv"
+PANEL_SEED = Path(__file__).resolve().parent / "panel_seed.csv"   # committed frozen panel (git, not scp)
 
 # ----------------------------------------------------------------- findata (reuse the committed adapter)
 def _findata_client():
@@ -259,10 +260,11 @@ def main():
     print(f"run_id={run.run_id} provider={run.provider} model={run.model}")
 
     # panel (cache so re-runs are instant)
-    if PANEL_CACHE.exists():
-        P = pd.read_csv(PANEL_CACHE, dtype={"m": str})
+    src = PANEL_CACHE if PANEL_CACHE.exists() else (PANEL_SEED if PANEL_SEED.exists() else None)
+    if src is not None:
+        P = pd.read_csv(src, dtype={"m": str})
     else:
-        run.progress(phase="build_panel")
+        run.progress(phase="build_panel")          # only if no cache/seed (needs findata creds)
         P = build_panel(_findata_client())
         try: P.to_csv(PANEL_CACHE, index=False)
         except Exception: pass
