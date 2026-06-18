@@ -77,3 +77,4 @@ fin_kb/*.sqlite
 fin_kb/*.en.json
 fin_kb/corpus.jsonl
 runs/
+experiments/neff_loop/panel.csv
