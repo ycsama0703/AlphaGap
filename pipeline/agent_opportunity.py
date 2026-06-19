@@ -23,55 +23,62 @@ _FINDATA_ENV = {
     "multi_step": "real financial questions need decompose → tool calls → compute → cite (a genuine agent task)",
 }
 
-_SYSTEM = """你为【AI agent × 金融】找能发【AI 论文】的机会角度。关键定位:**AI 是主角,金融是它发力/被压力测试的场景**。
-论文骨架是一个 AI/agent 贡献——新机制 / 新系统 / 新评估 / 新 benchmark——投 NeurIPS/ICML/ICLR/ACL,金融是 killer app。
-**绝对不是**"用 agent 预测收益/波动"(那是金融实证披皮,不是你要的)。
+_SYSTEM = """你从【今天挖到的具体机制清单】出发,找能发【AI 论文】的研究角度。投 NeurIPS/ICML/ICLR/ACL,金融是 killer app / 压力测试场景。**绝对不是**"用 agent 预测收益/波动"。
 
-什么算"AI 论文级贡献"(positive result 必须是这类,不是 Sharpe):
-- 一个新的 agent 机制让某能力↑(任务成功率、工具路由准确率、推理可靠性、样本/调用效率)
-- 一个新的可审计/可验证/拒答机制让 agent 更可信(检测幻觉、证据充分、轨迹可审计)——金融是高风险场景所以有说服力
-- 一个新的评估范式 / benchmark 暴露现有 agent 的失败模式(AI 圈认 benchmark 论文)
-- 一个多智能体协作/记忆/经济对齐机制的新结果
+【最重要的规则——角度必须从机制长出来,不准套模板】
+- 我会给你一份【今天挖到的机制清单】(M1, M2, …,每条来自一篇具体论文)。
+- 你的任务:**对清单里的每一条机制,问"它在金融场景下逼出什么研究角度?"**——机制是主语,角度从这条机制生长出来。
+- **每条 opportunity 必须 anchor 到清单里的一条具体机制**(给 anchor.mechanism_id + 复述那条机制 + 它来自哪篇)。不许凭空造、不许回退到通用 agent 套路(工具路由/证据充分/多agent审计这类**通用模板,除非今天的某条机制真的逼出它,否则不要提**)。
+- 一条机制最多产一个角度;某条机制长不出有料角度就**跳过它**。数量 = 有料的机制数,不凑固定类别、不强求覆盖某几类。宁缺勿滥。
+
+【角度的三种 flavor(angle_type)——鼓励多样,不是配额】
+- `positive`: 新机制让某 AI 能力↑(成功率/工具路由/推理可靠/样本调用效率/benchmark 暴露失败模式)。
+- `counter_narrative`: 领域广泛相信"X 有效/X 是某机制起作用",而一个公平对照(**同模型 ablation / 复杂度对齐 / blind 基线**)很可能**推翻**它。**负向/打脸结果是合法且有价值的——kill 本身就是贡献。**
+- `transfer_failure`: 这机制在 AI/别的领域 work,但某个**金融性质**(低 SNR / 非平稳 / regime 切换 / 重尾 / 无 ground-truth)很可能让它崩 → 找出**具体归因**。
+（鼓励出现 counter_narrative / transfer_failure,别清一色 positive。）
 
 【硬约束】
-1. 贡献和 positive_result 必须是【AI 方法层面】的赢(能力/可靠性/效率/评估),不是金融收益指标
-2. 金融场景要解释【为什么金融让这个 AI 问题更难/更有意义】(高风险、需可追溯、工具歧义、多步、监管)——金融是 motivation 不是目的
-3. 数据/环境落在给定 findata 真实面(工具集/文档/可核验答案);标 findata_native + 要自建什么(agent harness/标注通常要自建,如实写)
-4. 机制【任务驱动】:用给定已挖 agent 机制仅当真适配,标 mechanism_source=mined;否则 general;没合适填 (mechanism_gap)+source=gap。绝不硬塞
-5. prior_work 点名真实 agent 工作(ReAct/Reflexion/Toolformer/FinToolBench 等),说清比它新在哪
-6. positive_result 可证伪、带方向和粗略量级
-7. 【评分,适配 AI 主角】每条给 scores(各 1-10 整数)+ 综合 + 一行判词:
-   - novelty: 真新还是增量/借壳(最重要;最接近 prior 就是被迁移那篇本身 → ≤4)
-   - ai_contribution: 是真 AI 方法/系统/benchmark 贡献,还是金融实证披皮(借壳 → 低)
-   - positive_attainability: 做出【正向、可发】结果的把握(信号/任务可得性)
+1. 贡献/结果是【AI 方法层面】(能力/可靠性/效率/评估/归因),不是 Sharpe;但**结果可以是负向**(counter_narrative/transfer_failure)。
+2. why_finance_makes_it_hard 要针对【这条具体机制】说金融用什么压力测它,不要泛泛"金融高风险"。
+3. 环境落在 findata 真实面(工具/文档/可核验答案);标 findata_native + 要自建什么(harness/标注如实写)。
+4. mechanism_source: 锚定机制来自清单=mined;清单机制逼出但需补一块=gap;别硬塞。
+5. prior_work 点名真实工作,说清比它新在哪 / 它信了什么(counter_narrative 尤其要点名"谁信 X")。
+6. positive_result_shape 可证伪、带方向和量级(负向角度就写"预期推翻成什么/归因到哪个性质")。
+7. 【评分】每条给 scores(各 1-10 整数)+ 综合 + 一行判词:
+   - novelty: 真新还是增量/借壳(最接近 prior=被迁移那篇本身 → ≤4)
+   - story: **故事性**——这角度能连载几章吗?推翻/照亮一个被信的说法吗?正负向都有趣吗?安全无聊的增量 → 低;有线可钻/反直觉/能写出叙事 → 高
+   - ai_contribution: 真 AI 方法/系统/benchmark/归因贡献,还是披皮
    - feasibility: 数据/harness/标注可得性(越要自建越低)
-   - publishability: AI venue 接受度(贡献+novelty 综合)
-   composite = round(0.35*novelty + 0.25*ai_contribution + 0.2*positive_attainability + 0.1*feasibility + 0.1*publishability, 1)
-   verdict_line: 一句话给人的判词(像"角度新但要自建大标注集,med")
+   - publishability: AI venue 接受度
+   - positive_attainability: 拿到【可发】结果的把握(注:负向角度此项指"能否干净地证伪")
+   composite = round(0.30*novelty + 0.25*story + 0.20*ai_contribution + 0.15*feasibility + 0.10*publishability, 1)
+   verdict_line: 一句话判词(像"反叙事角度,有线可钻,med")
 
 输出严格 JSON:
 {
   "opportunities": [
     {
-      "subtask": "AI/agent 角度(≤30字)",
-      "ai_contribution_type": "new_mechanism|reliability_audit|new_benchmark|multi_agent|efficiency",
-      "why_finance_makes_it_hard": "金融为什么让这个 AI 问题更难/更值得做",
-      "classical_baseline": "现有 agent 做法(点名:ReAct/Reflexion/FinToolBench…)",
-      "prior_work": "代表 agent 工作 + 已做到哪",
-      "why_ai_wins": "新机制凭什么提升(AI 能力/可靠性/效率,机制级)",
-      "candidate_mechanism": "任务真正需要的机制(功能描述);没合适填 (mechanism_gap)",
-      "mechanism_source": "mined|general|gap",
-      "findata_env": "用 findata 哪些工具/文档/答案当 agent 环境 + findata_native + 要自建什么(harness/标注)",
-      "positive_result_shape": "AI 方法层面的赢(成功率/路由准确/幻觉检出/调用效率,可证伪带量级)——不是Sharpe",
-      "novelty_angle": "比 prior agent 工作新在哪",
+      "anchor": {"mechanism_id": "M? (清单里的编号)", "paper_id": "来自哪篇", "mechanism": "复述这条被锚定的机制"},
+      "angle_type": "positive|counter_narrative|transfer_failure",
+      "subtask": "研究角度(≤30字)",
+      "ai_contribution_type": "new_mechanism|reliability_audit|new_benchmark|multi_agent|efficiency|counter_narrative|transfer_failure",
+      "why_finance_makes_it_hard": "这条具体机制在金融里被什么压力测试",
+      "classical_baseline": "现有做法/被打脸的对象(点名)",
+      "prior_work": "代表工作 + 已做到哪 / 信了什么",
+      "why_ai_wins": "新机制凭什么提升;或(反叙事)凭什么公平对照会翻;或(迁移失败)哪个金融性质会崩",
+      "candidate_mechanism": "锚定的机制(功能描述)",
+      "mechanism_source": "mined|gap",
+      "findata_env": "用 findata 哪些工具/文档/答案当环境 + findata_native + 要自建什么",
+      "positive_result_shape": "可证伪带量级的结果(正向=能力↑;负向=推翻成X/归因到某性质)",
+      "novelty_angle": "比 prior 新在哪",
       "publishability": "AI venue 量级 + 主要风险",
-      "feasibility": "cheap|med|heavy + 关键前提(常是 harness/标注成本)",
-      "scores": {"novelty": int, "ai_contribution": int, "positive_attainability": int,
+      "feasibility": "cheap|med|heavy + 关键前提",
+      "scores": {"novelty": int, "story": int, "ai_contribution": int, "positive_attainability": int,
                  "feasibility": int, "publishability": int, "composite": float, "verdict_line": "一句话判词"}
     }
   ]
 }
-产出 5-6 条,覆盖 new_mechanism / reliability_audit / new_benchmark / multi_agent 几类。宁缺勿滥。"""
+记住:**有几条有料的机制就产几个角度,每个都锚定一条具体机制;不套通用模板、不凑类别。**"""
 
 
 def generate_agent_opportunity_map(mined_agent_mechs: list[dict] | None = None, *, client=None) -> list[dict]:
@@ -83,16 +90,26 @@ def generate_agent_opportunity_map(mined_agent_mechs: list[dict] | None = None, 
     from pipeline.llm_client import LLMClient
     client = client or LLMClient()
 
-    mech_brief = []
-    for m in (mined_agent_mechs or [])[:5]:
+    # Enumerate today's mined mechanisms as M1, M2, … — the PRIMARY material. Each opportunity must
+    # anchor to one of these ids, so the output tracks the day's specific papers (not a static template).
+    mech_lines, n = [], 0
+    for m in (mined_agent_mechs or [])[:6]:
         title = m.get("_title", "") or m.get("arxiv_id", "")
+        pid = m.get("arxiv_id", "") or title[:30]
         for sm in (m.get("transferable_sub_mechanisms") or [])[:3]:
-            mech_brief.append(f"[{title[:40]}] " + (sm.get("mechanism") if isinstance(sm, dict) else str(sm)))
-    parts = [f"【findata 作为 agent 环境(工具/文档/可核验答案,不是回归特征)】\n{json.dumps(_FINDATA_ENV, ensure_ascii=False, indent=2)}"]
-    if mech_brief:
-        parts.append("【我们 L3 挖到的 agent 机制(仅当真适配某角度才用,不适配就忽略,绝不硬塞)】\n- " + "\n- ".join(mech_brief))
-    parts.append("产出 AI-agent×金融 机会地图(JSON)。记住:AI 是主角,贡献是 AI 方法/系统/评估,不是收益预测。")
-    out = client.chat_json(system=_SYSTEM, user="\n\n".join(parts), temperature=0.5,
+            n += 1
+            mech = sm.get("mechanism") if isinstance(sm, dict) else str(sm)
+            mech_lines.append(f"M{n} (paper={pid} · {title[:50]}): {mech}")
+    if not mech_lines:
+        return []
+    parts = [
+        "【今天挖到的机制清单——你的主材料。对每一条问:它在金融里逼出什么研究角度?每个角度必须 anchor 到一条 M 编号。】\n"
+        + "\n".join(mech_lines),
+        f"【findata 可作为环境(工具/文档/可核验答案),仅当某条机制的角度需要时引用】\n{json.dumps(_FINDATA_ENV, ensure_ascii=False)}",
+        "产出 JSON。每个角度从清单里某条具体机制生长出来(填 anchor.mechanism_id),"
+        "不套通用模板、不凑固定类别;鼓励出现 counter_narrative / transfer_failure 角度。有几条有料就产几个。",
+    ]
+    out = client.chat_json(system=_SYSTEM, user="\n\n".join(parts), temperature=0.6,
                            reasoning=True, max_tokens=6000) or {}
     return out.get("opportunities", []) or []
 

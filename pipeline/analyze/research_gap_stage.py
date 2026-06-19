@@ -117,9 +117,14 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     from pathlib import Path as _P
     bdir = _P(__file__).resolve().parent.parent.parent / "briefs"
     bdir.mkdir(exist_ok=True)
+    # index the mined pool by paper id so each brief anchors to ITS OWN source mechanism, not pool[0]
+    by_pid = {}
+    for rec in pool:
+        by_pid[str(rec.get("arxiv_id") or "")] = rec
     for i, g in enumerate(gaps[:n_brief], 1):
         try:
-            anchor = pool[0] if pool else None
+            anchor_pid = str(((g.get("anchor") or {}).get("paper_id")) or "")
+            anchor = by_pid.get(anchor_pid) or (pool[0] if pool else None)
             brief = generate_agent_gap_brief(g, mined_anchor=anchor, client=oc)   # mechanism brief → deep model
             md = render_agent_brief_md(brief, g)
             fname = f"{date_tag}-MECH-{i}.md"
