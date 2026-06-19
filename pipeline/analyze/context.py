@@ -451,22 +451,28 @@ def load_experiment_findings(bank_path: Path | None = None) -> list[dict]:
     shape as literature mappings, so DISCOVER dedups against directions WE have
     actually tested (esp. refuted ones). Degrades to [] if no bank is present.
 
-    Path priority: explicit arg → env ALPHAGAP_FINDINGS_BANK → live ~/.xp/findings/bank.jsonl →
-    committed repo seed db/seed/findings_bank.jsonl. The repo seed is the kill-memory that travels
-    via git (luyao4 has no ~/.xp bank), so DISCOVER stops re-proposing already-refuted gaps there.
+    Sources are MERGED (union by gap_id): the live/env bank (~/.xp/findings/bank.jsonl, freshest
+    locally) UNION the committed repo seed db/seed/findings_bank.jsonl (the kill-memory that travels
+    via git). Live entries win on conflict; repo-seed-only entries are added. This keeps a deploy
+    target like luyao4 — whose ~/.xp bank can be stale or absent — current with the latest kills
+    without any scp (it just git-pulls the seed). Degrades to [] if neither source exists.
     """
     import os
     repo_seed = PROJECT_ROOT / "db" / "seed" / "findings_bank.jsonl"
-    bank = bank_path or Path(
+    live = bank_path or Path(
         os.environ.get("ALPHAGAP_FINDINGS_BANK", str(Path.home() / ".xp/findings/bank.jsonl"))
     )
-    if not bank.is_file():
-        if repo_seed.is_file():
-            bank = repo_seed                     # fallback: committed kill-memory (e.g. on luyao4)
-        else:
-            return []
-    out = []
-    for line in bank.read_text().splitlines():
+    sources, lines = [], []                      # live first (precedence), then repo seed
+    if live.is_file():
+        sources.append(live)
+    if repo_seed.is_file() and repo_seed.resolve() not in {s.resolve() for s in sources}:
+        sources.append(repo_seed)
+    for src in sources:
+        lines.extend(src.read_text().splitlines())
+    if not lines:
+        return []
+    seen_gap_ids, out = set(), []
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -479,6 +485,9 @@ def load_experiment_findings(bank_path: Path | None = None) -> list[dict]:
         if status in (None, "untested"):   # inconclusive runs aren't findings about the gap
             continue
         gap_id = md.get("gap_id", "?")
+        if gap_id in seen_gap_ids:          # union by gap_id; live bank (read first) wins on conflict
+            continue
+        seen_gap_ids.add(gap_id)
         # mechanism-level (brand-free) keys; fall back to the experiment title only
         # if the bank entry predates the mechanism fields.
         ai_mech = md.get("ai_mechanism") or e.get("title", "")
