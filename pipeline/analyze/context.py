@@ -451,14 +451,20 @@ def load_experiment_findings(bank_path: Path | None = None) -> list[dict]:
     shape as literature mappings, so DISCOVER dedups against directions WE have
     actually tested (esp. refuted ones). Degrades to [] if no bank is present.
 
-    Path: env ALPHAGAP_FINDINGS_BANK, else ~/.xp/findings/bank.jsonl.
+    Path priority: explicit arg → env ALPHAGAP_FINDINGS_BANK → live ~/.xp/findings/bank.jsonl →
+    committed repo seed db/seed/findings_bank.jsonl. The repo seed is the kill-memory that travels
+    via git (luyao4 has no ~/.xp bank), so DISCOVER stops re-proposing already-refuted gaps there.
     """
     import os
+    repo_seed = PROJECT_ROOT / "db" / "seed" / "findings_bank.jsonl"
     bank = bank_path or Path(
         os.environ.get("ALPHAGAP_FINDINGS_BANK", str(Path.home() / ".xp/findings/bank.jsonl"))
     )
     if not bank.is_file():
-        return []
+        if repo_seed.is_file():
+            bank = repo_seed                     # fallback: committed kill-memory (e.g. on luyao4)
+        else:
+            return []
     out = []
     for line in bank.read_text().splitlines():
         line = line.strip()
