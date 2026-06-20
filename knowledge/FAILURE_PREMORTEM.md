@@ -135,6 +135,57 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    line (HAR / GARCH-EVT / Ledoit-Wolf / ACI already solve the target). *(Note: this is the general rule; #10 above —
    numbered 8 in spirit — is the special case of hard-coding the closed form into a learnable gate.)*
 
+12. **AI-agent 版经典病理 = 先用 head-to-head 验证"agent ≠ 静态对应物" / "AI-agent version of a classical
+   pathology" — verify "agent ≠ its static counterpart" by a $0 head-to-head FIRST.** If a gap reframes a KNOWN
+   statistical pathology (optimizer's curse / multiple testing / data-snooping) as an "active-AGENT" or "dynamic"
+   version, the entire novelty rests on the agent's dynamics producing something its STATIC same-size counterpart
+   cannot. *Check (decisive, $0, before any build):* run the **agent on a null** (shuffled labels) vs a **static
+   counterpart matched to the agent's ACTUAL DISTINCT-trial count** (max over that-many random strategies) — NOT
+   its nominal eval count. **FAIRNESS IS LOAD-BEARING:** an agent re-evaluates elites, so it explores far fewer
+   DISTINCT formulas than its nominal evals; comparing to a nominal-size random universe gives the static null
+   extra distinct draws and FALSELY shows "agent < static." Match the distinct count. Also: reviving a gap whose
+   mechanism already turned out KNOWN needs a NEW load-bearing differentiator, head-to-head tested FIRST — never
+   stack repositionings on an unverified "it's different because it's an agent."
+   **VERIFY THE KILL, not just the GO:** a NO-GO/shelve decision must be adversarially checked (esp. for a fair
+   comparison) before distilling rules from it — a buggy kill wrongly discards a direction.
+   *Empirical finding (corrected):* at a FAIR matched-DISTINCT comparison, adaptive search slightly OUT-mines a
+   same-size random universe (small, marginal — ~+0.01 IC, 90% CI excludes 0 only at higher search intensity, and
+   it grows with intensity). This is the **adaptive-data-analysis** effect (adaptive querying finds higher extrema
+   than non-adaptive of equal size) — known, and weak; novelty hinges on the #7 lit-gate, not efficacy. — surfaced
+   by **ML-#11 revival**: the FIRST head-to-head used the agent's nominal count and WRONGLY concluded "adaptive
+   under-inflates / shadow=Reality-Check dominated"; an adversarial fairness re-check (matched distinct count)
+   reversed it to a weak positive adaptive edge. Related to #8 (re-skinned selection) and #7 (verify the
+   differentiator FIRST).
+
+13. **误归因防火墙:先证"结构之外"work,再谈"结构之处"failure / Mis-attribution firewall — prove it works
+   OUTSIDE the blamed structure before claiming it fails AT that structure.** For any **transfer-failure** gap
+   that claims a method **specifically fails at some finance structure** (regime switch / jump / non-stationarity /
+   fat tail), the whole story requires the method to **actually work OUTSIDE that structure** (in the calm regime).
+   *Check ($0, real data):* first show the method beats a **trivial last-value / random-walk baseline** in the
+   calm regime; only then test the blamed structure. If it **already loses in calm**, the failure is **general**
+   (usually because the finance feature is a **near-martingale with no exploitable smooth structure** = the 族A /
+   low-SNR death), and "fails at jumps" is a **mis-attribution** of a general failure to a specific cause → the gap
+   doesn't stand. **Sub-rule:** "error concentrated at jumps" is NOT evidence of differential jump-fragility (jumps
+   are unpredictable for EVERY method); the bar is **at-jump error WORSE than the trivial baseline**. — caught
+   **TDA continuous-evolution transfer failure** (claimed neural-ODE / TDA-evolution works on smooth dynamics but
+   fails at finance jumps; real-data test on the rolling-correlation market-mode feature showed last-value beat the
+   continuous methods EVERYWHERE — 3.7× better in calm, 1.18-1.23× at jumps — so the calm advantage never existed;
+   the feature is a near-martingale, continuity has no smooth velocity to exploit; "fails at jumps" mis-attributed
+   a general failure. $0/CPU/findata-native; robust to the stand-in since no smooth-flow model beats last-value on
+   a random walk).
+
+14. **同模型 ablation 先行:要证某 LLM 行为是模型内在,决定性对照=同一模型只改可疑诱因 / Same-model ablation —
+   to claim an LLM behavior is model-intrinsic (AI-specific), the decisive control is the SAME model with ONLY the
+   suspect cause (usually a prompt / convergence instruction / scaffold) changed.** External baselines and
+   cross-model replication are **not enough** — replication holds the suspect cause CONSTANT, so it cannot detect a
+   prompt/instruction artifact. *Check:* before claiming "model M does X intrinsically," run M with the suspect
+   cause removed; if X vanishes → artifact. *Corollary:* an optimizer told to "optimize metric Z" converging to Z
+   is universal and normal, **not** mode collapse; and don't use a mutation-driven GP as a "diversity baseline" (it
+   is structurally over-dispersed → falsely inflates the gap). — caught **neff mode-collapse loop** (LLM-refine
+   spanned fewer effective dims than GP, replicated across qwen-7B + gpt-chat-latest + 3 seeds → looked AI-specific;
+   but same model + "maximize diversity" prompt lifted indep 0.02→0.15 ≈ GP → the collapse was the convergence
+   INSTRUCTION, not the model).
+
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +
   their $0 checks, drawing on the list above.
