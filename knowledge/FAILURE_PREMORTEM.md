@@ -186,6 +186,28 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    but same model + "maximize diversity" prompt lifted indep 0.02→0.15 ≈ GP → the collapse was the convergence
    INSTRUCTION, not the model).
 
+15. **必须打败"最蠢的基线"(不是稻草人)/ Must beat the DUMBEST baseline, not a strawman.** A constructive
+   mechanism gap's whole value is that the borrowed mechanism beats what you'd trivially do. Name the
+   dumbest baseline for the exact objective — **last-value / random-walk** (forecasting), **leverage /
+   Cook's-distance** (fragility), **DAG-depth / node-count** (graph), **mean-verdict** (verification),
+   **unweighted distance** (reweighting), **IS-IC** (OOS degradation), **uniform / plug-in** (weighting) —
+   and require the mechanism to beat IT, head-to-head, at matched cost/complexity. *Check (before build):*
+   "can I argue it beats the dumbest baseline?" If not, don't build. — general form caught the entire
+   2026-06-20/21 sweep: alpha (LLM economic prior < Occam/complexity-matched GP), #2 (spectral radius ≈
+   DAG-depth), #5 (continuous-evolution < last-value on a near-martingale), Gap A (influence-concentration
+   < leverage; residual was ADA), Gap C (verifier-disagreement < mean-verdict). Subsumes #10/#13.
+
+16. **标准金融任务对强模型已到天花板 → agent 可靠性/验证类 gap 空洞 / Standard financial tasks are AT CEILING
+   for frontier models ⇒ agent-reliability / verification / abstention gaps on them are vacuous.** A strong
+   model computes standard ratios and selects standard formulas essentially perfectly. So a gap framed as
+   "reduce the agent's numerical/logic/verification error on standard financial computation" has **no error
+   left to reduce** (decomposition degenerates: A=B=1.0; verifier disagreement = 0). *Check (before build):*
+   measure the strong-model baseline on the exact task — if it's already ≈ceiling (acc≈1 / disagreement≈0),
+   the gap is vacuous. Real signal requires genuinely HARD / ambiguous tasks (messy extraction, non-standard
+   metrics, period matching) — which reintroduce the **subjective-label (κ-collapse, #6/F-evidence) and
+   hard-logic** traps; weigh that cost up front. — caught **#4** (evidence-compute separation: A=B=1.0, no
+   arithmetic error to offload) and **Gap C** (verifier disagreement = 0.000, mean-verdict AUROC = 1.0).
+
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +
   their $0 checks, drawing on the list above.
