@@ -43,7 +43,7 @@ FRONTIER_EXTENSION = "frontier_extension"
 
 
 def build_gap_context(end_date: date | None = None,
-                      *, ai_top: int = 20, fin_top: int = 10,
+                      *, ai_top: int = 20, fin_top: int = 10, theory_top: int = 8,
                       window_days_ai: int | None = None,
                       window_days_fin: int | None = None,
                       window_days: int | None = None,   # legacy override
@@ -80,8 +80,9 @@ def build_gap_context(end_date: date | None = None,
         ctx_builder.CONF_LOOKBACK_THIN_BONUS
         if fresh_recent < ctx_builder.CONF_THIN_FRESH_THRESHOLD else 0)
     conf_n = max(0, min(conf_n, ai_top - 5))   # always leave room for fresh anchors
+    # APPLIED line (AI×Fin) — exclude theory papers so they get their own quota, not crowded out here.
     ai_main = ctx_builder.get_top_papers("ai", end, top_n=ai_top - conf_n, window_days=wd_ai,
-                                         exclude_ids=recent_anchor_ids)
+                                         exclude_ids=recent_anchor_ids, theory_filter="exclude")
     conf_lookback = ctx_builder.get_conference_lookback(
         end, conf_n, side="ai",
         exclude_ids=recent_anchor_ids | {p["id"] for p in ai_main})
@@ -89,6 +90,13 @@ def build_gap_context(end_date: date | None = None,
     log.info("AI anchors: %d fresh + %d conference look-back (fresh_recent=%d%s)",
              len(ai_main), len(conf_lookback), fresh_recent,
              " — THIN day" if conf_n > ctx_builder.CONF_LOOKBACK_BASE else "")
+    # THEORY line — transplantable foundational mechanisms (math/stats/optimization × finance structure).
+    # Separate pool with its own quota so the high-volume applied stream can't drown it.
+    theory_papers = ctx_builder.get_top_papers(
+        "ai", end, top_n=theory_top, window_days=wd_ai,
+        exclude_ids=recent_anchor_ids | {p["id"] for p in ai_papers},
+        theory_filter="only")
+    log.info("THEORY anchors: %d", len(theory_papers))
     fin_papers = ctx_builder.get_top_papers("fin", end, top_n=fin_top, window_days=wd_fin)
     # Literature-derived mappings + experiment-derived findings (ACCUMULATE → DISCOVER:
     # dedup against directions we have actually tested, especially refuted ones).
@@ -138,6 +146,7 @@ def build_gap_context(end_date: date | None = None,
         "window_ai_days": wd_ai,
         "window_fin_days": wd_fin,
         "ai_recent_papers": [ctx_builder.paper_for_prompt(p) for p in ai_papers],
+        "theory_recent_papers": [ctx_builder.paper_for_prompt(p) for p in theory_papers],
         "historical_ai_mechanisms": historical_ai_mechanisms,
         "fin_recent_papers": [ctx_builder.paper_for_prompt(p) for p in fin_papers],
         "ai_trends": _strip_meta(ai_trends),
@@ -154,7 +163,7 @@ def build_gap_context(end_date: date | None = None,
         # raw refs for downstream validation
         "_valid_ai_ids": {p["id"] for p in ai_papers} | {
             p["id"] for p in historical_ai_mechanisms
-        },
+        } | {p["id"] for p in theory_papers},
         "_valid_fin_ids": {p["id"] for p in fin_papers},
         "_mappings_brief": [ctx_builder.mapping_brief(m) for m in mappings],
         "_valid_transfer_cell_ids": {cell["cell_id"] for cell in fin_transfer_cells},

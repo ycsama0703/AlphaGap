@@ -40,9 +40,10 @@
    - method_primary 可保留 paper 自创名（"FIPO"），mechanism_description 必须功能化
    - 用英文小写短语，连字符或空格连接
 5. side 判断：
-   - "ai": cs.LG / cs.CL / cs.AI / cs.MA / 普通 ML & DL & RL & Agent 论文
+   - "ai": cs.LG / cs.CL / cs.AI / cs.MA / **stat.ML / stat.ME / math.ST / math.OC / math.PR**(底层数学/统计/优化/概率理论)/ 普通 ML & DL & RL & Agent 论文
    - "fin": q-fin.* / SSRN / 论文核心讨论金融市场、投资、资产定价、量化交易
    - "both": 显式跨界论文（AI 方法 + 金融实证）
+   - 注：底层理论论文(stat.*/math.*)归 "ai" 即可；下游靠 is_theory 标记单独分流到理论线,不需要新增 side 值
 6. 如果摘要信息不足以判断某字段，返回空字符串或空数组，不要硬编
 
 正面例子（好的抽取）：

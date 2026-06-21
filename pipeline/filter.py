@@ -51,6 +51,12 @@ _OFFFIELD_PATTERN = (r"image generation|diffusion model|\bvideo\b|\b3d\b|point c
                      r"speech|audio|text-to-image|text-to-video|protein|molecul|drug discovery|\bgenom|"
                      r"image classif|object detection|segmentation|rendering")
 
+# THEORY line — arxiv categories that carry transplantable foundational mechanisms
+# (math/stats/optimization/probability/mathematical-finance). A paper in any of these
+# is auto-admitted as a candidate (so it survives gate ①), and matching the theory
+# mechanism dictionary (whitelist.theory_mechanisms) boosts its priority (gate ③).
+_THEORY_CATEGORIES = {"stat.ML", "stat.ME", "math.ST", "math.OC", "math.PR", "q-fin.MF"}
+
 
 @dataclass
 class CandidateSignals:
@@ -63,12 +69,15 @@ class CandidateSignals:
     title_keyword_hit: bool = False           # keyword in title (stronger signal than abstract)
     battlefields: list[str] = field(default_factory=list)   # which AI×Fin battlefields this paper hits
     offfield: bool = False                    # has strong vision/robotics/bio/multimodal modality markers
+    is_theory: bool = False                   # THEORY line: in a theory arxiv category (stat/math/q-fin.MF)
+    theory_mechanisms: list[str] = field(default_factory=list)  # transplantable-mechanism clusters hit
 
     @property
     def is_candidate(self) -> bool:
         return (
             self.is_hf_daily
             or self.is_q_fin
+            or self.is_theory              # THEORY line: theory-category papers always candidate (gate ①)
             or bool(self.named_author_match)
             or bool(self.institution_match)
             or bool(self.keyword_matches)
@@ -93,8 +102,17 @@ class CandidateSignals:
         score += 3.0 if "finance" in bf else 0.0
         score += 1.5 * min(len(bf - {"finance"}), 3)       # +1.5 per non-finance battlefield, cap 3
         # vision/robotics/bio/multimodal markers → sink it, UNLESS it's genuinely finance (rare exception)
-        if self.offfield and "finance" not in bf and not self.is_q_fin:
+        # or a mechanism-bearing THEORY paper (a robust estimator demoed on images is still a transplantable
+        # mechanism — don't bury it for an incidental vision keyword).
+        if self.offfield and "finance" not in bf and not self.is_q_fin \
+                and not (self.is_theory and self.theory_mechanisms):
             score -= 6.0
+        # THEORY line: a theory-category paper carrying transplantable mechanisms gets boosted into the
+        # L2/deep-mine range (same magnitude as the AI×Fin battlefield boost, so it doesn't crowd out
+        # the applied line). Base +1.0 for being theory; +1.5 per mechanism cluster (cap 3).
+        if self.is_theory:
+            score += 1.0
+        score += 1.5 * min(len(self.theory_mechanisms), 3)
         return score
 
     def to_dict(self) -> dict:
@@ -108,6 +126,8 @@ class CandidateSignals:
             "title_keyword_hit": self.title_keyword_hit,
             "battlefields": self.battlefields,
             "offfield": self.offfield,
+            "is_theory": self.is_theory,
+            "theory_mechanisms": self.theory_mechanisms,
             "priority_score": round(self.priority_score, 2),
         }
 
@@ -136,6 +156,20 @@ def _flat_institutions(whitelist: dict) -> list[str]:
 
 def _named_authors_fin(whitelist: dict) -> set[str]:
     return {n.lower() for n in whitelist.get("named_authors_fin", [])}
+
+
+def _theory_mechanism_terms(whitelist: dict) -> list[tuple[str, str]]:
+    """Flatten whitelist.theory_mechanisms into [(cluster, term_lower), ...].
+
+    THEORY line dictionary: each term is a transplantable foundational mechanism, grouped by the
+    finance structure it matches (regime_shift / distribution_shift / nonstationary_ts / ...).
+    Editable in whitelist.yaml without touching code (precision-first: start narrow, widen later).
+    """
+    out: list[tuple[str, str]] = []
+    for cluster, terms in (whitelist.get("theory_mechanisms", {}) or {}).items():
+        for t in terms or []:
+            out.append((cluster, t.lower()))
+    return out
 
 
 # ---------- Signal computation ----------
@@ -202,6 +236,16 @@ def compute_signals(paper: dict, whitelist: dict | None = None) -> CandidateSign
     sig.battlefields = [name for name, pat in _BATTLEFIELD_PATTERNS.items()
                         if re.search(pat, relevance_hay, re.I)]
     sig.offfield = bool(re.search(_OFFFIELD_PATTERN, relevance_hay, re.I))
+
+    # 7. THEORY line — transplantable foundational mechanisms.
+    # is_theory: paper is in a theory arxiv category (auto-candidate, gate ①).
+    # theory_mechanisms: which mechanism clusters (whitelist.theory_mechanisms) the title/abstract hits.
+    sig.is_theory = any(c in _THEORY_CATEGORIES for c in cats)
+    hit_clusters: list[str] = []
+    for cluster, term in _theory_mechanism_terms(wl):
+        if term in haystack and cluster not in hit_clusters:
+            hit_clusters.append(cluster)
+    sig.theory_mechanisms = hit_clusters
 
     return sig
 

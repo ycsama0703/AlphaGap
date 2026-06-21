@@ -113,10 +113,16 @@ def _select_diverse_recent(pool: list[dict], top_n: int, end_date: date,
 
 
 def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
-                   window_days: int = 14, exclude_ids: set | None = None) -> list[dict]:
+                   window_days: int = 14, exclude_ids: set | None = None,
+                   theory_filter: str = "any") -> list[dict]:
     """Top N papers on `side` within window — recency-weighted + diversity-capped
     (O2). Fetches a larger score-ranked pool, then rotates/diversifies anchors so
     daily generation isn't anchored on the same few papers every run.
+
+    theory_filter routes the two parallel lines (theory papers carry side='ai'):
+      "any"     — no filter (legacy behaviour; used by the fin side).
+      "only"    — THEORY line pool: only papers flagged signals.is_theory.
+      "exclude" — APPLIED line pool: drop theory papers so they don't crowd the AI×Fin anchors.
 
     Returns dicts with full extraction (l1 + l2 when available).
     """
@@ -128,6 +134,11 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
                    e.mechanism_description_json,
                    e.building_blocks_json, e.claims_json, e.benchmarks_json,
                    s.priority_score, s.signals_json"""
+    theory_clause = ""
+    if theory_filter == "only":
+        theory_clause = "AND COALESCE(json_extract(s.signals_json, '$.is_theory'), 0) = 1"
+    elif theory_filter == "exclude":
+        theory_clause = "AND COALESCE(json_extract(s.signals_json, '$.is_theory'), 0) = 0"
     where = f"""FROM papers p
             JOIN paper_extractions e ON e.paper_id = p.id
             LEFT JOIN paper_signals s ON s.paper_id = p.id
@@ -135,6 +146,7 @@ def get_top_papers(side: str, end_date: date, *, top_n: int = 20,
               AND (e.side = ? OR e.side = 'both')
               AND date(p.publication_date) >= ?
               AND date(p.publication_date) <= ?
+              {theory_clause}
               AND {db.TRIGGER_ELIGIBILITY_GUARD}"""
     params = (side, start.isoformat(), end_date.isoformat())
     with db.connect() as conn:

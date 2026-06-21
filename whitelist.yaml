@@ -313,6 +313,58 @@ keywords:
       - volatility modeling
 
 # =========================================================================
+# 理论线机制词典（THEORY line — transplantable foundational mechanisms）
+# 按"对上的金融结构"分组。命中即给 priority 加分 + 标 is_theory mechanism。
+# 收录原则：每条本身是一个【可拎出来移植的机制】(估计量/界/正则/优化目标),
+# 且对得上一个被现有方法服务不足的金融结构。
+# 不收：纯抽象界(Rademacher/concentration/一般 generalization bound)——那是 premortem 筛子,不是可移植机制。
+# 暂不收：rough volatility / neural SDE(数学重、findata 未必便宜可测、数学金融本身卷)——跑顺后再议。
+# precision-first：初版宁可窄。增删方向改这张表即可,不用动代码。
+# =========================================================================
+theory_mechanisms:
+  regime_shift:            # 金融结构：非平稳 / regime 切换
+    - distributionally robust
+    - DRO
+    - wasserstein
+    - optimal transport
+  distribution_shift:      # 金融结构：训练≠实盘的分布漂移
+    - conformal
+    - distribution-free
+    - coverage guarantee
+    - calibration
+  nonstationary_ts:        # 金融结构：时序非平稳
+    - online learning
+    - regret
+    - change-point
+    - non-stationary
+    - sequential
+  no_live_exploration:     # 金融结构：不能实盘探索、只有历史
+    - offline RL
+    - pessimism
+    - conservative
+    - sample complexity
+  low_snr_highdim:         # 金融结构：低信噪比 / 高维过拟合
+    - shrinkage
+    - james-stein
+    - ledoit-wolf
+    - high-dimensional
+    - random matrix
+    - graphical lasso
+    - empirical bayes
+  heavy_tail:              # 金融结构：肥尾
+    - robust statistics
+    - heavy-tail
+    - median-of-means
+    - M-estimator
+    - huber
+  causal:                  # 金融结构：归因混淆(接 premortem #13 mis-attribution)
+    - causal inference
+    - identification
+    - instrumental variable
+    - confounding
+    - do-calculus
+
+# =========================================================================
 # 数据源配置
 # =========================================================================
 sources:

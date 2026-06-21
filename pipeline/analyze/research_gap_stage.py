@@ -37,32 +37,11 @@ def _openreview_pdf_url(paper: dict) -> str | None:
     return f"https://openreview.net/pdf?id={note}" if note else None
 
 
-def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str = "latest", client=None) -> dict:
-    """ctx = the gap pipeline context. Mines the top-n anchor papers → research gaps with slices.
-    Returns {"research_gaps": [...], "mined_papers": [...], "skipped": [...]}. Best-effort."""
-    if n_papers <= 0:
-        return {"research_gaps": [], "mined_papers": [], "skipped": []}
-    try:
-        from ..papermine.mine import mine_paper
-        from ..agent_opportunity import (generate_agent_opportunity_map,
-                                         generate_agent_gap_brief, render_agent_brief_md)
-        from ..llm_client import opus_client
-    except Exception as e:
-        log.warning("research-gap stage unavailable (import): %s", e)
-        return {"research_gaps": [], "mined_papers": [], "skipped": [], "error": str(e)}
-
-    # HYBRID: the quality-sensitive deep steps (L3 full-text mining, mechanism-gap generation, brief)
-    # run on the OpenRouter deep model (OPENROUTER_MODEL_OPUS = openai/gpt-chat-latest). The cheap
-    # mechanical work (L1/L2 extract, gap pipeline) stays on the default model (`client`). The deep
-    # client degrades to `client` if OpenRouter isn't configured.
-    oc = opus_client(default=client)
-
-    fin_fields = ctx.get("fin_field_boundaries") or ctx.get("fin_field_boundaries_all") or []
-    candidates = ctx.get("ai_recent_papers", []) or []
-    # Mine a MIX of fresh-arxiv and peer-reviewed conference anchors, INTERLEAVED. Conference papers
-    # are appended at the back of ai_recent_papers, so a naive "top-N" only ever mined fresh agent-heavy
-    # arxiv → repetitive gaps. Interleaving guarantees conference anchors get mined too. Both are L3
-    # full-text mined (arxiv PDF or OpenReview PDF).
+def _mine_anchor_pool(candidates: list[dict], n_papers: int, *, mine_paper, oc) -> tuple[list, list, list]:
+    """Mine up to n_papers anchors from `candidates` (interleaving fresh-arxiv + conference).
+    Returns (pool, mined_ids, skipped). Shared by both lines (applied + theory)."""
+    if n_papers <= 0 or not candidates:
+        return [], [], []
     fresh = [(p, _arxiv_id(p)) for p in candidates if _arxiv_id(p)]
     conf = [(p, _openreview_pdf_url(p)) for p in candidates
             if not _arxiv_id(p) and _openreview_pdf_url(p)]
@@ -89,6 +68,44 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
         except Exception as e:
             skipped.append({"id": mine_arg, "reason": str(e)[:120]})
             log.warning("research-gap stage: mining %s failed: %s", mine_arg, str(e)[:120])
+    return pool, mined_ids, skipped
+
+
+def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str = "latest", client=None) -> dict:
+    """ctx = the gap pipeline context. Mines the top-n anchor papers → research gaps with slices.
+    Returns {"research_gaps": [...], "mined_papers": [...], "skipped": [...]}. Best-effort."""
+    if n_papers <= 0:
+        return {"research_gaps": [], "mined_papers": [], "skipped": []}
+    try:
+        from ..papermine.mine import mine_paper
+        from ..agent_opportunity import (generate_agent_opportunity_map,
+                                         generate_agent_gap_brief, render_agent_brief_md)
+        from ..llm_client import opus_client
+    except Exception as e:
+        log.warning("research-gap stage unavailable (import): %s", e)
+        return {"research_gaps": [], "mined_papers": [], "skipped": [], "error": str(e)}
+
+    # HYBRID: the quality-sensitive deep steps (L3 full-text mining, mechanism-gap generation, brief)
+    # run on the OpenRouter deep model (OPENROUTER_MODEL_OPUS = openai/gpt-chat-latest). The cheap
+    # mechanical work (L1/L2 extract, gap pipeline) stays on the default model (`client`). The deep
+    # client degrades to `client` if OpenRouter isn't configured.
+    oc = opus_client(default=client)
+
+    fin_fields = ctx.get("fin_field_boundaries") or ctx.get("fin_field_boundaries_all") or []
+
+    # Two parallel lines, each with its own quota (precision-first; theory must not be crowded out by
+    # the high-volume applied stream). Mine a MIX of fresh-arxiv + peer-reviewed conference, INTERLEAVED.
+    import os as _os
+    n_ai = int(_os.environ.get("RESEARCH_GAP_PAPERS_AI", str(n_papers)))       # APPLIED line (AI×Fin)
+    n_theory = int(_os.environ.get("RESEARCH_GAP_PAPERS_THEORY", "2"))         # THEORY line
+    ai_candidates = ctx.get("ai_recent_papers", []) or []
+    theory_candidates = ctx.get("theory_recent_papers", []) or []
+    ai_pool, ai_ids, ai_skip = _mine_anchor_pool(ai_candidates, n_ai, mine_paper=mine_paper, oc=oc)
+    th_pool, th_ids, th_skip = _mine_anchor_pool(theory_candidates, n_theory, mine_paper=mine_paper, oc=oc)
+    pool = ai_pool + th_pool
+    mined_ids = ai_ids + th_ids
+    skipped = ai_skip + th_skip
+    log.info("research-gap stage: mined %d applied + %d theory anchors", len(ai_pool), len(th_pool))
 
     # cost of the deep (gpt) client — added to the daily total in main; 0 if it fell back to `client`
     # (then its spend is already inside client.estimate_cost_usd()).
@@ -98,33 +115,50 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
         log.info("research-gap stage: no papers mined (skipped %d)", len(skipped))
         return {"research_gaps": [], "mined_papers": [], "skipped": skipped, "cost_usd": _oc_cost()}
 
+    # KILL MEMORY: feed already-tested/shelved gaps so the generator stops re-proposing dead directions
+    # (it otherwise never sees the findings bank). Refuted + agent/ml-finance/factor-mining fields.
     try:
-        # AI-PROTAGONIST generator: contributions are AI agent mechanisms / reliability / benchmarks,
-        # finance is the hard scenario — NOT return prediction. (Replaces the old return-prone generator.)
-        # KILL MEMORY: feed already-tested/shelved agent gaps so the generator stops re-proposing dead
-        # directions (it otherwise never sees the findings bank). Refuted + agent/ml-finance fields.
-        try:
-            from . import context as _ctx
-            _all = _ctx.load_experiment_findings()
-            killed = [k for k in _all if k.get("status") in ("refuted", "superseded_by_validation")
-                      and k.get("field_id") in ("financial_llm_agents", "ml_finance", "agentic_factor_mining")]
-        except Exception as e:
-            killed = []
-            log.warning("research-gap stage: kill-memory load failed: %s", str(e)[:100])
-        gaps = generate_agent_opportunity_map(pool, client=oc, killed=killed)   # mechanism-gap gen → deep model
-        log.info("research-gap stage: fed %d killed gaps to generator", len(killed))
+        from . import context as _ctx
+        _all = _ctx.load_experiment_findings()
+        killed = [k for k in _all if k.get("status") in ("refuted", "superseded_by_validation")
+                  and k.get("field_id") in ("financial_llm_agents", "ml_finance", "agentic_factor_mining")]
     except Exception as e:
-        log.warning("research-gap stage: generation failed: %s", str(e)[:160])
+        killed = []
+        log.warning("research-gap stage: kill-memory load failed: %s", str(e)[:100])
+
+    # Generate each line with its own track framing. APPLIED = AI-protagonist; THEORY = foundational
+    # mechanism × finance-structure (must name the incumbent it beats; frontier-not-classics; self-screen).
+    gaps = []
+    for label, line_pool, track in (("applied", ai_pool, "ai"), ("theory", th_pool, "theory")):
+        if not line_pool:
+            continue
+        try:
+            g_line = generate_agent_opportunity_map(line_pool, client=oc, killed=killed, track=track) or []
+            for g in g_line:
+                g["_track"] = track
+            gaps.extend(g_line)
+            log.info("research-gap stage: %s line → %d gaps (fed %d killed)", label, len(g_line), len(killed))
+        except Exception as e:
+            log.warning("research-gap stage: %s generation failed: %s", label, str(e)[:160])
+    if not gaps:
         return {"research_gaps": [], "mined_papers": mined_ids, "skipped": skipped,
-                "error": str(e), "cost_usd": _oc_cost()}
+                "error": "no gaps generated", "cost_usd": _oc_cost()}
 
     for g in gaps:
         g["_source_papers"] = mined_ids
 
     # Expand the top-N by composite score into downloadable TEST-facing briefs (precision-first:
     # don't brief all of them — opus briefs are ~$0.2 each). Best-effort; a brief failure is non-fatal.
-    gaps.sort(key=lambda g: (g.get("scores", {}) or {}).get("composite", 0) or 0, reverse=True)
-    n_brief = int(__import__("os").environ.get("RESEARCH_GAP_BRIEFS", "2"))
+    _comp = lambda g: (g.get("scores", {}) or {}).get("composite", 0) or 0
+    gaps.sort(key=_comp, reverse=True)
+    # Brief budget per line so the theory line is GUARANTEED representation (precision-first: we want
+    # theory output visible, not crowded out by higher-scoring applied gaps). Top-by-composite within each.
+    n_brief_ai = int(__import__("os").environ.get("RESEARCH_GAP_BRIEFS_AI", "2"))
+    n_brief_theory = int(__import__("os").environ.get("RESEARCH_GAP_BRIEFS_THEORY", "1"))
+    to_brief = (
+        [g for g in gaps if g.get("_track") != "theory"][:n_brief_ai]
+        + [g for g in gaps if g.get("_track") == "theory"][:n_brief_theory]
+    )
     from pathlib import Path as _P
     bdir = _P(__file__).resolve().parent.parent.parent / "briefs"
     bdir.mkdir(exist_ok=True)
@@ -132,20 +166,25 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     by_pid = {}
     for rec in pool:
         by_pid[str(rec.get("arxiv_id") or "")] = rec
-    for i, g in enumerate(gaps[:n_brief], 1):
+    ai_i = th_i = 0
+    for g in to_brief:
         try:
+            track = g.get("_track", "ai")
+            if track == "theory":
+                th_i += 1; tag = f"THEORY-{th_i}"
+            else:
+                ai_i += 1; tag = f"AI-{ai_i}"
             anchor_pid = str(((g.get("anchor") or {}).get("paper_id")) or "")
             anchor = by_pid.get(anchor_pid) or (pool[0] if pool else None)
-            brief = generate_agent_gap_brief(g, mined_anchor=anchor, client=oc)   # mechanism brief → deep model
+            brief = generate_agent_gap_brief(g, mined_anchor=anchor, client=oc, track=track)   # mechanism brief → deep model
             md = render_agent_brief_md(brief, g)
-            fname = f"{date_tag}-MECH-{i}.md"
+            fname = f"{date_tag}-MECH-{tag}.md"
             (bdir / fname).write_text(md, encoding="utf-8")
             g["_brief_file"] = fname
             g["_brief"] = brief
-            log.info("research-gap stage: brief written %s (composite %s)", fname,
-                     (g.get("scores", {}) or {}).get("composite"))
+            log.info("research-gap stage: brief written %s (composite %s)", fname, _comp(g))
         except Exception as e:
-            log.warning("research-gap stage: brief for gap %d failed: %s", i, str(e)[:120])
+            log.warning("research-gap stage: brief failed: %s", str(e)[:120])
 
     log.info("research-gap stage: %d agent×finance opportunit(ies) from %d paper(s); %d briefs",
              len(gaps), len(mined_ids), sum(1 for g in gaps if g.get("_brief_file")))

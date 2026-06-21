@@ -21,11 +21,14 @@ from .llm_client import LLMClient
 
 log = logging.getLogger(__name__)
 
-# Default config — tunable
-DEFAULT_ARXIV_CATEGORIES = [
-    "cs.LG", "cs.CL", "cs.AI", "cs.MA",
-    "q-fin.PM", "q-fin.ST", "q-fin.TR", "q-fin.CP",
-]
+# Default config — tunable. Grouped so the filter can route papers into the two
+# parallel lines: APPLIED (AI×finance applications) and THEORY (transplantable
+# foundational mechanisms × finance structure). Theory categories are high-volume —
+# volume is controlled downstream by per-line priority quotas, not by dropping categories.
+AI_APPLIED_CATEGORIES = ["cs.LG", "cs.CL", "cs.AI", "cs.MA"]
+FIN_CATEGORIES = ["q-fin.PM", "q-fin.ST", "q-fin.TR", "q-fin.CP"]
+THEORY_CATEGORIES = ["stat.ML", "stat.ME", "math.ST", "math.OC", "math.PR", "q-fin.MF"]
+DEFAULT_ARXIV_CATEGORIES = AI_APPLIED_CATEGORIES + FIN_CATEGORIES + THEORY_CATEGORIES
 DEFAULT_LOOKBACK_DAYS = 1
 L2_PRIORITY_THRESHOLD = 5.0   # only L2-extract papers with priority >= this
 
