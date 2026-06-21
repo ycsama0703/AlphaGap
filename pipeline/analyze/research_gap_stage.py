@@ -101,7 +101,18 @@ def generate_daily_research_gaps(ctx: dict, *, n_papers: int = 2, date_tag: str 
     try:
         # AI-PROTAGONIST generator: contributions are AI agent mechanisms / reliability / benchmarks,
         # finance is the hard scenario — NOT return prediction. (Replaces the old return-prone generator.)
-        gaps = generate_agent_opportunity_map(pool, client=oc)   # mechanism-gap generation → deep model
+        # KILL MEMORY: feed already-tested/shelved agent gaps so the generator stops re-proposing dead
+        # directions (it otherwise never sees the findings bank). Refuted + agent/ml-finance fields.
+        try:
+            from . import context as _ctx
+            _all = _ctx.load_experiment_findings()
+            killed = [k for k in _all if k.get("status") in ("refuted", "superseded_by_validation")
+                      and k.get("field_id") in ("financial_llm_agents", "ml_finance", "agentic_factor_mining")]
+        except Exception as e:
+            killed = []
+            log.warning("research-gap stage: kill-memory load failed: %s", str(e)[:100])
+        gaps = generate_agent_opportunity_map(pool, client=oc, killed=killed)   # mechanism-gap gen → deep model
+        log.info("research-gap stage: fed %d killed gaps to generator", len(killed))
     except Exception as e:
         log.warning("research-gap stage: generation failed: %s", str(e)[:160])
         return {"research_gaps": [], "mined_papers": mined_ids, "skipped": skipped,

@@ -81,7 +81,8 @@ _SYSTEM = """你从【今天挖到的具体机制清单】出发,找能发【AI 
 记住:**有几条有料的机制就产几个角度,每个都锚定一条具体机制;不套通用模板、不凑类别。**"""
 
 
-def generate_agent_opportunity_map(mined_agent_mechs: list[dict] | None = None, *, client=None) -> list[dict]:
+def generate_agent_opportunity_map(mined_agent_mechs: list[dict] | None = None, *, client=None,
+                                   killed: list[dict] | None = None) -> list[dict]:
     """mined agent-paper L3 records → AI-agent×finance opportunities (AI-paper contributions, not return prediction)."""
     import sys
     from pathlib import Path
@@ -106,9 +107,20 @@ def generate_agent_opportunity_map(mined_agent_mechs: list[dict] | None = None, 
         "【今天挖到的机制清单——你的主材料。对每一条问:它在金融里逼出什么研究角度?每个角度必须 anchor 到一条 M 编号。】\n"
         + "\n".join(mech_lines),
         f"【findata 可作为环境(工具/文档/可核验答案),仅当某条机制的角度需要时引用】\n{json.dumps(_FINDATA_ENV, ensure_ascii=False)}",
-        "产出 JSON。每个角度从清单里某条具体机制生长出来(填 anchor.mechanism_id),"
-        "不套通用模板、不凑固定类别;鼓励出现 counter_narrative / transfer_failure 角度。有几条有料就产几个。",
     ]
+    # KILL MEMORY: agent gaps we already TESTED/SHELVED — do NOT re-propose them (this generator otherwise
+    # never sees the findings bank, so it kept regenerating dead directions like evidence-computation
+    # separation / capability-fragility). Mechanism-level + why-dead; the model must avoid or clearly beat them.
+    kbrief = []
+    for k in (killed or [])[:14]:
+        why = (k.get("notes") or k.get("content") or "")[:160]
+        kbrief.append(f"- [{k.get('fin_concept') or k.get('mechanism_family','?')}] {k.get('ai_mechanism','')[:80]} — DEAD: {why}")
+    if kbrief:
+        parts.append("【已测过/已毙的 agent×金融 角度——不要重提这些机制/角度(除非你能明确写清比它【新在哪】且死因不适用)。"
+                     "尤其:别再提'证据-计算分离/PAL'、'更多agent/工具的能力-脆弱性权衡'、'谱半径/失败归因'、'验证器分歧拒答'这类已毙方向。】\n"
+                     + "\n".join(kbrief))
+    parts.append("产出 JSON。每个角度从清单里某条具体机制生长出来(填 anchor.mechanism_id),"
+                 "不套通用模板、不凑固定类别、不重提上面已毙方向;鼓励 counter_narrative / transfer_failure。有几条有料就产几个。")
     out = client.chat_json(system=_SYSTEM, user="\n\n".join(parts), temperature=0.6,
                            reasoning=True, max_tokens=6000) or {}
     return out.get("opportunities", []) or []
