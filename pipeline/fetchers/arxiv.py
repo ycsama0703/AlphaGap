@@ -51,16 +51,27 @@ def fetch_recent(
     seen: set[str] = set()
     results: list[PaperRecord] = []
 
+    # Per-category resilience: a single category 429/503/timeout (after retries) must NOT discard the
+    # whole fetch. With many categories (applied + theory lines), all-or-nothing failure is too costly —
+    # skip the failing category, keep the rest. Only a total wipe-out (every category down, e.g. an arXiv
+    # outage) yields an empty list, which the caller already treats as non-fatal.
+    failed: list[str] = []
     for cat in categories:
         log.info("Fetching arXiv category %s since %s", cat, since_date)
-        for paper in _fetch_category(cat, since_date, max_per_category):
-            if paper.arxiv_id in seen:
-                continue
-            seen.add(paper.arxiv_id)
-            results.append(paper)
+        try:
+            for paper in _fetch_category(cat, since_date, max_per_category):
+                if paper.arxiv_id in seen:
+                    continue
+                seen.add(paper.arxiv_id)
+                results.append(paper)
+        except Exception as e:
+            failed.append(cat)
+            log.warning("arXiv category %s failed after retries — skipping (keeping other categories): %s",
+                        cat, str(e)[:120])
         time.sleep(RATE_LIMIT_SECONDS)
 
-    log.info("arXiv: %d unique papers across %d categories", len(results), len(categories))
+    log.info("arXiv: %d unique papers across %d categories (%d failed: %s)",
+             len(results), len(categories), len(failed), ",".join(failed) or "none")
     return results
 
 
