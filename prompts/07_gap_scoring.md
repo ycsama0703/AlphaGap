@@ -99,7 +99,10 @@ significance 问"做成了值不值、会不会改变什么"。
   承重区分点先验证(若价值押在"我们≠已知工作 X/新机制",那个直接区分实验在 Phase-0 验过了吗?只有否定式/间接证据→高风险)、
   换皮的低-SNR 选择(核心动作是"在收益/低 SNR 目标上做选择/搜索"吗?若是,无论包装成 reward-hacking/agent,默认塌回多重检验 optimizer's curse〔gap∝√(log N_eff/T)〕→ 无新机制,只剩 testbed;Phase-0 须用"线性+打乱标签+变 N"剥皮测试证伪)、
   闭式最优=无归纳偏置余量(机制改动本质是把闭式/定理最优形式〔逆方差/Kalman/BLUE/解析滤波〕硬编码进可学组件 gate/权重/attention 吗?若是,同信息的公平 LEARNED 基线基本都能学到→无可发表余量;承重对比须 hand-derived vs LEARNED 同信息,非 vs uniform 稻草人;另:学习基线零初始化死梯度会伪造"手工赢",须核实其真在训练)、
-  可滤波潜变量=滤波器 incumbent 两头堵死(目标量是有已知最优估计器的潜变量吗?隐状态/条件方差/后验信念,经典解=Kalman/HMM 前向算法/GLS/粒子滤波/EM。若是→可计算处经典滤波器已最优〔AI 机制顶多打平〕,不可计算处又无 ground-truth label 可监督;且问 method 的 label 在真实数据上存不存在还是只在模拟里。有滤波器 或 label 只在模拟里→significance 不得给高分。实测:拟合 HMM/Kalman 恢复真潜变量 R²>0.95=incumbent 已解)。
+  可滤波潜变量=滤波器 incumbent 两头堵死(目标量是有已知最优估计器的潜变量吗?隐状态/条件方差/后验信念,经典解=Kalman/HMM 前向算法/GLS/粒子滤波/EM。若是→可计算处经典滤波器已最优〔AI 机制顶多打平〕,不可计算处又无 ground-truth label 可监督;且问 method 的 label 在真实数据上存不存在还是只在模拟里。有滤波器 或 label 只在模拟里→significance 不得给高分。实测:拟合 HMM/Kalman 恢复真潜变量 R²>0.95=incumbent 已解)、
+  反叙事"病态-修复"gap(形如"方法 A 有病态、保守方法 B 修":须先验 (i) 信号下限〔某学习器超 buy&hold/last-value,否则崩=无信号普遍崩非 A 特有〕、(ii) 前提复现〔A 样本内超 supervised〕、(iii) 修复非平凡〔B 策略≠逐位退回行为/默认策略〕;三者任一不过→病态空洞,significance 不得给高分。且 kill 须经 verify-the-kill〔量 train-vs-live GAP、在自己 greedy 轨迹上 rollout〕)、
+  自适应/在线机制 vs 静态基线(形如"ACI/online learning/元重校准 在分布漂移下胜过静态基线":承重 incumbent 不是裸静态版,而是静态法的**条件化升级**〔EWMA-vol-scaled、GARCH 残差缩放、滚动条件分位数〕;静态版"崩塌"多为静态参数伪象,条件化升级免费收回大部分。brief 若没做{裸静态, 条件化升级, 自适应}三方对比、或 GO 只押单一漂移事件→significance 不得给高分)、
+  结构化/低秩"预测某会计/慢变量"(形如"matrix/tensor completion、因子模型、robust-PCA、graph 去预测某会计量/慢变量":GO 须基于**扩窗 OOS skill vs RW**,而非样本内 R²〔YoY/差分序列样本内 R² 是幻象,OOS 常为负〕;承重基线须含**平凡平滑器**〔滑动均值/shrink,常去噪赢 RW→机制须打过它而非打过 RW〕;结构化成分须在 OOS 上赢过 per-firm 基线〔同期低秩协方差≠预测价值〕;低秩须用无填充平衡面板〔median-fill 灌伪因子〕。brief 若拿样本内 R²/同期低秩当 GO 证据、或没把平凡平滑器放进基线→significance 不得给高分)。
 - 若某核心前提**未被 brief 检验**或**明显过不了** → 在 significance_reason 里点明该前提风险,**significance 不得给高分**
   (sound 但前提存疑 = 大概率做不出来,正是该被筛掉的"鸡肋")。
 

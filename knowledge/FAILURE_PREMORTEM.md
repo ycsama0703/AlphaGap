@@ -208,6 +208,61 @@ For the gap's core mechanism, name the **2–3 empirical facts that must be true
    hard-logic** traps; weigh that cost up front. — caught **#4** (evidence-compute separation: A=B=1.0, no
    arithmetic error to offload) and **Gap C** (verifier disagreement = 0.000, mean-verdict AUROC = 1.0).
 
+17. **反叙事"病态-修复" gap:先验信号下限 + 病态须超最简学习器 + 修复须非平凡(≠退回默认策略)/ Counter-narrative
+   "pathology-then-fix" gap — establish the signal floor, reproduce the premise in-sample, and verify the fix is
+   non-trivial, BEFORE crediting the story.** For a gap shaped "method A exhibits pathology P (value hallucination /
+   overfit / live-collapse), conservative method B fixes it," three preconditions must hold: **(i) signal floor** —
+   some learner must beat the dumbest baseline (buy&hold / last-value); if not, the "live collapse" is the universal
+   low-SNR collapse (族A), not A-specific. **(ii) premise reproduces** — A must beat the simplest learner (supervised)
+   **in-sample** before its live collapse is attributable to the mechanism rather than to there being no signal at all.
+   **(iii) non-trivial fix** — B's "fixed" policy must DIFFER from simply reverting to the behavior/default policy
+   (check: does B's output match the data-generating / behavior policy position-for-position? if yes, B didn't learn,
+   it reverted). *Check (Phase-0):* the floor, the in-sample A>supervised premise, and B≠behavior-policy. **VERIFY THE
+   KILL:** measure the train/backtest-vs-live GAP (not just OOS level), and roll each policy out on ITS OWN greedy
+   trajectory (not behavior-policy states) — a lazy kill can wrongly declare "phenomenon absent." — caught **THEORY-1**
+   (offline-RL value hallucination: phenomenon WAS real — naive-DQN train-test gap 2.45 > supervised 1.74, CQL shrinks
+   to −0.26 — but buy&hold +0.97 beat every learner (no floor), RL never beat supervised in-sample (0.47≈0.48), and
+   CQL's "fix" matched the momentum behavior policy position-for-position (−0.51/−0.25 = trivial revert). Verify-the-kill
+   corrected my premature "phenomenon absent" call but the kill stood on cleaner grounds.) Subsumes #6/#13/#14/#15 for
+   the counter-narrative shape.
+
+18. **自适应/在线机制 vs 静态基线:承重 incumbent = 静态法的"条件化升级",不是裸静态版 / Adaptive-vs-static — the
+   load-bearing incumbent is the static method's obvious CONDITIONAL/SCALED upgrade, not its raw static form.** For a
+   gap shaped "adaptive/online mechanism (ACI, online learning, meta-recalibration) beats a static baseline under
+   distribution shift," the load-bearing incumbent is **NOT** the raw static method — it's that method's **obvious
+   conditional / scaled upgrade** (EWMA-vol-scaled band, GARCH residual scaling, rolling conditional quantiles). The
+   "collapse" observed in the static version is usually a **static-parameter artifact** (e.g. width that doesn't scale
+   with the volatility level); the conditional upgrade captures most of the recovery for free, and the adaptive
+   mechanism's marginal edge OVER that upgrade is the real bar — typically small and riding on a single shift event.
+   *Check (Phase-0, $0):* run the three-way {raw static, conditional upgrade, adaptive mechanism}; if the conditional
+   upgrade already pulls the metric back near nominal, the adaptive mechanism is vacuous. Also **count the distinct
+   shift EVENTS** the GO rests on — one event is not a result. — caught **THEORY-2** (ACI for HAR-RV 90% coverage:
+   COVID collapse real — fixed-cal 0.805 (basket-robust, median 0.806) — but a textbook EWMA-vol-scaled band recovered
+   70% (0.872); ACI's extra +1.1pp coverage cost +8pp width (+31% vs +23%) and rode on COVID alone; 2022 didn't
+   collapse, 2008 uncalibratable since findata starts 2006). Special case of #11 (filter incumbent — conditional
+   variance has known solutions) + #15 (the dumbest baseline's *correct* / conditional version).
+
+19. **结构化/低秩"预测某会计/慢变量"类 gap:OOS-verify-the-GO + 平凡平滑器基线 + 结构化-vs-per-firm 的 OOS
+   增益 / "Structured/low-rank forecasting" gap — OOS-verify the GO before any mechanism, baseline a
+   TRIVIAL smoother, and prove the structural component adds OOS forecasting value over a per-firm baseline.**
+   For any gap that proposes a structured / low-rank / cross-sectional mechanism (matrix or tensor completion,
+   factor model, robust-PCA, graph) to **forecast** an accounting / slow-moving quantity, run four $0 checks
+   **before matching a mechanism**: **(1) OOS not in-sample** — expanding-window OOS skill vs random-walk; the
+   in-sample R² massively overstates, and **YoY / seasonal differencing of a persistent series induces
+   autocorrelation that is OOS-negative** (a near-RW level looks "forecastable" in differenced in-sample space).
+   **(2) Trivial-smoother baseline** — put a trailing-mean / shrink smoother in the baseline; a noisy mean-reverting
+   quantity is often denoisable by trivial local averaging that beats RW, so the load-bearing bar is "beat the
+   **smoother**", NOT "beat RW" (#15). **(3) Structural-vs-per-firm OOS gain** — the cross-sectional / low-rank
+   component must REDUCE OOS error vs a per-firm baseline; **contemporaneous low-rank covariance does NOT imply
+   forecasting value** (a panel can be 15–50% low-rank in covariance yet the factor adds ~0 OOS). **(4) No-fill PCA**
+   — assess low-rank on a balanced, no-fill panel; `fillna(median)` injects a spurious common component (inflated
+   PC1 35% → real 15%). **VERIFY THE KILL too:** "RW unbeatable" can itself be a misread — the true verdict is often
+   "a trivial smoother beats RW, but the structural mechanism can't beat the smoother" (#15 ceiling). — caught
+   **THEORY-4** (gross-margin structured forecast: in-sample AR R² 0.318 → OOS −0.002, YoY-param −0.380; only a
+   trailing-mean smoother beat RW (+0.264); the cross-firm factor added −0.003, losing to the smoother by 0.27; the
+   "strong low-rank" was a median-fill artifact 35%→15%). Subsumes #1/#6 (in-sample mirage) + #9 (fair baseline) +
+   #15 (dumbest baseline = the ceiling).
+
 ## How it feeds back
 - **prompt 05** (engineering gap): the gap must output an `empirical_preconditions` block — the 2–3 facts +
   their $0 checks, drawing on the list above.
