@@ -15,6 +15,7 @@ from phase0.scorer_audit.exact_tatqa import (
     summarize_exact,
 )
 from phase0.scorer_audit.judge_agreement import cohen_kappa
+from phase0.scorer_audit.multimodel_report import pairwise_reversals
 from phase0.scorer_audit.extractors import (
     extract_free_regex,
     extract_free_surface,
@@ -295,6 +296,18 @@ def test_judge_agreement_kappa() -> None:
     assert cohen_kappa(["yes", "yes", "no", "no"], ["yes", "yes", "no", "no"]) == 1.0
     assert cohen_kappa(["yes", "yes", "no", "no"], ["yes", "no", "yes", "no"]) == 0.0
     assert cohen_kappa([], []) is None
+
+
+def test_pairwise_model_reversal_is_strict_and_distinguishes_ties() -> None:
+    rows = pairwise_reversals(
+        ["a", "b", "c"],
+        {"a": 0.7, "b": 0.6, "c": 0.7},
+        {"a": 0.5, "b": 0.8, "c": 0.7},
+    )
+    lookup = {(row["left"], row["right"]): row for row in rows}
+    assert lookup[("a", "b")]["strict_reversal"] is True
+    assert lookup[("a", "c")]["strict_reversal"] is False
+    assert lookup[("a", "c")]["tie_change"] is True
 
 
 def test_blind_judge_request_is_strict_and_provider_pinned() -> None:
