@@ -30,6 +30,10 @@ openreview-py>=2.2
 numpy>=1.26
 sentence-transformers>=3.0
 
+# Benchmark scorer audit (official TAT-QA scorer imports both)
+pandas>=2.0
+scipy>=1.11
+
 # Optional (后续阶段)
 # tenacity                # 重试装饰器
 pypdf>=4.0

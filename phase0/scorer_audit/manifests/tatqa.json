@@ -1,0 +1,39 @@
+{
+  "benchmark": "TAT-QA",
+  "prediction_contract": {
+    "fields": ["answer", "scale"],
+    "scales": ["", "thousand", "million", "billion", "percent"]
+  },
+  "policies": [
+    {
+      "id": "p0_raw",
+      "permissions": ["outer_whitespace", "unordered_answer_spans"],
+      "forbidden": ["number_parsing", "scale_multiply", "sign_insertion", "percent_conversion", "rounding"]
+    },
+    {
+      "id": "p1_syntax",
+      "permissions": ["lowercase", "whitespace", "article_removal", "non_semantic_punctuation"],
+      "preserves": ["numeric_minus", "accounting_parentheses", "percent_symbol", "decimal_point"]
+    },
+    {
+      "id": "p2_scale",
+      "permissions": ["word_scale", "structured_scale"]
+    },
+    {
+      "id": "p3_numeric",
+      "permissions": ["accounting_parentheses_to_negative", "percent_symbol_to_ratio"]
+    },
+    {
+      "id": "p4_round2",
+      "permissions": ["round_two_before_structured_scale"]
+    }
+  ],
+  "official_reproduction": {
+    "implementation": "external_unmodified_tatqa_repo",
+    "expected_tagop_dev": {
+      "em": 45.92,
+      "f1": 58.88,
+      "scale": 90.95
+    }
+  }
+}
