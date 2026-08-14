@@ -155,6 +155,10 @@ def build_multimodel_report(
             "format_gap_official": official_gap,
             "strict_format_conclusion_reversal": p1_gap * official_gap < 0,
             "format_tie_change": (p1_gap == 0) != (official_gap == 0),
+            "format_significance_flip_at_0_05": (
+                (format_by_policy[P1]["mcnemar_exact_p"] < 0.05)
+                != (format_by_policy[OFFICIAL]["mcnemar_exact_p"] < 0.05)
+            ),
             "official_itemwise_verified": {
                 condition: bool(
                     data["summary"].get("official_verification", {}).get("itemwise_exact")
@@ -203,9 +207,23 @@ def build_multimodel_report(
         P1: _rank(p1_pipeline_scores),
         OFFICIAL: _rank(official_pipeline_scores),
     }
-    report["pipeline_rank_reversals"] = pairwise_reversals(
+    pipeline_reversals = pairwise_reversals(
         pipelines, p1_pipeline_scores, official_pipeline_scores
     )
+    for row in pipeline_reversals:
+        left_model, left_condition = row["left"].split("/", 1)
+        right_model, right_condition = row["right"].split("/", 1)
+        row["paired_p1"] = _paired_comparison(
+            loaded[right_model][right_condition]["correctness"][P1],
+            loaded[left_model][left_condition]["correctness"][P1],
+        )
+        row["paired_official"] = _paired_comparison(
+            loaded[right_model][right_condition]["correctness"][OFFICIAL],
+            loaded[left_model][left_condition]["correctness"][OFFICIAL],
+        )
+    report["pipeline_rank_reversals"] = pipeline_reversals
+    p1_format_gaps = [row["format_gap_p1"] for row in report["models"].values()]
+    official_format_gaps = [row["format_gap_official"] for row in report["models"].values()]
     report["gates"] = {
         "any_model_rank_reversal": any(
             row["strict_reversal"]
@@ -217,6 +235,13 @@ def build_multimodel_report(
         ),
         "any_format_conclusion_reversal": any(
             row["strict_format_conclusion_reversal"] for row in report["models"].values()
+        ),
+        "any_format_significance_flip_at_0_05": any(
+            row["format_significance_flip_at_0_05"] for row in report["models"].values()
+        ),
+        "format_effect_heterogeneous_across_models": (
+            (min(p1_format_gaps) < 0 < max(p1_format_gaps))
+            or (min(official_format_gaps) < 0 < max(official_format_gaps))
         ),
     }
     return report

@@ -32,6 +32,7 @@ from phase0.openrouter_batch import (
 )
 from phase0.tatqa_run import _existing_successes, build_request_body, stratified_items
 from phase0.tatqa_run import load_dev
+from phase0.tatqa_batch_run import parse_batch_attachments
 from phase0.tatqa_blind_judge import build_judge_body
 
 
@@ -227,6 +228,16 @@ def test_openrouter_batch_result_matches_realtime_record_shape() -> None:
     assert (status, raw, error) == ("ok", "answer", "")
     assert usage["prompt_tokens"] == 10
     assert meta["provider"] == "Provider"
+
+
+def test_batch_attachments_are_explicit_and_unique() -> None:
+    assert parse_batch_attachments(
+        ["free=batch-123", "json=batch-456"]
+    ) == {"free": "batch-123", "json": "batch-456"}
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_batch_attachments(["free=batch-123", "free=batch-456"])
+    with pytest.raises(ValueError, match="invalid"):
+        parse_batch_attachments(["other=batch-123"])
 
 
 def test_exact_tatqa_path_keeps_syntax_and_semantic_permissions_separate() -> None:

@@ -24,6 +24,7 @@ from phase0.openrouter_batch import (
     base_model_slug,
     build_batch_payload,
     completion_from_batch_result,
+    get_batch,
     new_attempt_record,
     poll_batch,
     submit_batch,
@@ -126,6 +127,13 @@ def _append_results(
     if not isinstance(results, list):
         raise RuntimeError(f"completed batch {attempt['batch_id']} has no results list")
     by_custom_id = {str(result.get("custom_id")): result for result in results}
+    expected_ids = set(attempt["request_map"])
+    actual_ids = set(by_custom_id)
+    if expected_ids != actual_ids:
+        raise RuntimeError(
+            f"batch custom_id mismatch: missing={len(expected_ids - actual_ids)} "
+            f"unexpected={len(actual_ids - expected_ids)}"
+        )
     counts = {"ok": 0, "truncated": 0, "error": 0}
     with raw_path.open("a", encoding="utf-8") as handle:
         for custom_id, mapping in attempt["request_map"].items():
@@ -167,6 +175,20 @@ def _append_results(
     return counts["ok"], counts["truncated"], counts["error"]
 
 
+def parse_batch_attachments(specs: list[str]) -> dict[str, str]:
+    attachments: dict[str, str] = {}
+    for spec in specs:
+        if "=" not in spec:
+            raise ValueError(f"invalid attachment {spec!r}; expected CONDITION=BATCH_ID")
+        condition, batch_id = spec.split("=", 1)
+        if condition not in {"free", "json"} or not batch_id.startswith("batch-"):
+            raise ValueError(f"invalid attachment {spec!r}")
+        if condition in attachments:
+            raise ValueError(f"duplicate attachment for {condition}")
+        attachments[condition] = batch_id
+    return attachments
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=200, help="分层题数，0=全部")
@@ -187,8 +209,19 @@ def main() -> None:
     parser.add_argument("--answer-types", nargs="+", default=[])
     parser.add_argument("--dev-path", type=Path, default=DEV)
     parser.add_argument("--poll-seconds", type=float, default=10)
+    parser.add_argument(
+        "--attach-batch",
+        action="append",
+        default=[],
+        metavar="CONDITION=BATCH_ID",
+        help="recover an already submitted batch without making a new model call",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    try:
+        attachments = parse_batch_attachments(args.attach_batch)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     data = load_dev(args.dev_path)
     items = flatten_dev(data)
@@ -276,12 +309,19 @@ def main() -> None:
                     "uid": item["uid"],
                     "request_hash": stable_hash(body),
                 }
-            payload = build_batch_payload(args.model, requests_by_id)
-            submitted = submit_batch(key, payload)
+            if condition in attachments:
+                submitted = get_batch(key, attachments[condition])
+                if submitted.get("id") != attachments[condition]:
+                    raise RuntimeError("attached batch response id mismatch")
+                print(f"[{condition}] 附着已有 batch {attachments[condition]}；不会重新提交")
+            else:
+                payload = build_batch_payload(args.model, requests_by_id)
+                submitted = submit_batch(key, payload)
             attempt = new_attempt_record(batch=submitted, request_map=request_map)
             journal["attempts"].append(attempt)
             write_json_atomic(journal_path, journal)
-            print(f"[{condition}] 已提交 {attempt['batch_id']}，共 {len(request_map)} 请求")
+            action = "已附着" if condition in attachments else "已提交"
+            print(f"[{condition}] {action} {attempt['batch_id']}，共 {len(request_map)} 请求")
         else:
             print(f"[{condition}] 恢复 batch {attempt['batch_id']} ({attempt['status']})")
 
