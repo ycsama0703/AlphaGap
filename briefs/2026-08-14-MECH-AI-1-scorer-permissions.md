@@ -534,8 +534,8 @@ exact 归因已经跨过 40% gate；若后续人类校验推翻双 judge 对 ext
 
 在同一冻结 200 题 numeric selection、同一 free/JSON prompt、同一 labeled LLM extractor 和同一 exact
 scorer 上，加入 `anthropic/claude-sonnet-5:batch` 与 `minimax/minimax-m3:batch`。加上原 DeepSeek pilot，
-当前已有三个可完整分析的生成模型；`openai/gpt-5.6-luna-pro` 已在 luyao4 运行，但因 SSH 跳板
-`kv.run:10020` 离线尚未回收，不能把它计入下表。
+当前已有三个可完整分析的生成模型；`openai/gpt-5.6-luna-pro` 在 luyao4 的最后可见进度为 free
+200/200、JSON 175/200，但因 SSH 跳板 `kv.run:10020` 离线尚不能核验终态或回收，不能把它计入下表。
 
 | Generator | Free P1 | Free Official | JSON P1 | JSON Official | Free SCA | JSON SCA |
 |---|---:|---:|---:|---:|---:|---:|
@@ -563,7 +563,7 @@ scorer 上，加入 `anthropic/claude-sonnet-5:batch` 与 `minimax/minimax-m3:ba
 - scorer-policy significance flip：通过；
 - format-effect cross-model heterogeneity：强通过；
 - 稳健/显著的 model-rank reversal：未通过；
-- 第四模型 Luna：生成已部署，待跳板恢复后回收并统一抽取/评分。
+- 第四模型 Luna：运行已部署，待跳板恢复后核验终态、回收并统一抽取/评分。
 
 Claude/MiniMax Batch generation 均为 400/400 success、零截断，exact scorer 四组共 800/800 与未修改官方
 实现逐题一致。按冻结单价与实际 tokens 重算，两模型生成费用约 `$0.59143`；统一 free extractor 费用

@@ -13,7 +13,8 @@
 > **当前状态**：Phase 0.5 ✅；Phase 1A numeric pilot（200题）✅；exact 归因统一 ✅；双模型 blinded
 > LLM audit ✅；三生成模型同题比较（DeepSeek / Claude / MiniMax）✅。Claude 与 MiniMax 的正式
 > Batch 均为 200 free + 200 JSON、零 generation error/truncation，且 exact_official 与官方 scorer
-> 800/800 逐题一致。第四个模型 Luna 已在 luyao4 生成，因 `kv.run:10020` 暂时离线尚未回收分析。
+> 800/800 逐题一致。第四个模型 Luna 已在 luyao4 启动；最后可见进度为 free 200/200、JSON
+> 175/200，因 `kv.run:10020` 暂时离线尚不能核验终态或回收分析。
 > 现阶段主结果是跨模型格式效应异质性与 scorer-policy inference flip；数值排名反转仅 0.5pp、`p=1`，
 > 不能作为强 reversal 结论。详见研究说明 §12.7。
 
@@ -155,7 +156,7 @@ Batch runner 支持提交后临时 404、原子下载、journal 恢复和 `--att
 | 模型 | Run ID | 传输/provider | generation |
 |---|---|---|---:|
 | Claude Sonnet 5 | `tatqa_numeric_claude_sonnet5_batch_v1` | Batch / Anthropic | free 200/200 + JSON 200/200 |
-| GPT-5.6 Luna Pro | `tatqa_numeric_gpt56_luna_pro_v1` | realtime / OpenAI | 远端输出待回收 |
+| GPT-5.6 Luna Pro | `tatqa_numeric_gpt56_luna_pro_v1` | realtime / OpenAI | 最后可见 free 200/200 + JSON 175/200；终态待核验 |
 | MiniMax M3 | `tatqa_numeric_minimax_m3_batch_v1` | Batch / Together | free 200/200 + JSON 200/200 |
 
 Claude/MiniMax 的四个 batch 已直接向 OpenRouter 查询为 `completed`，合计 800/800 success。因 Batch 结果
