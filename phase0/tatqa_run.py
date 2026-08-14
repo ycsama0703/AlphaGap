@@ -98,13 +98,23 @@ def load_key() -> str:
 
 
 def load_dev(path: Path = DEV) -> list[dict[str, Any]]:
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"dev set 文件不完整，重新下载 → {path}")
+    else:
         print(f"下载 dev set → {path}")
-        response = requests.get(DEV_URL, timeout=60)
-        response.raise_for_status()
-        path.write_bytes(response.content)
-    return json.loads(path.read_text(encoding="utf-8"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(DEV_URL, timeout=60)
+    response.raise_for_status()
+    # Validate before publish, then atomically replace. Multiple fresh workers may
+    # download concurrently, but none can observe a partially written dataset.
+    parsed = response.json()
+    temp_path = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    temp_path.write_bytes(response.content)
+    temp_path.replace(path)
+    return parsed
 
 
 def render(table: list[list[Any]], paragraphs: list[dict[str, Any]]) -> str:

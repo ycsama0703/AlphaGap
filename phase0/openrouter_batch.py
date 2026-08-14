@@ -83,10 +83,24 @@ def poll_batch(
     *,
     interval_seconds: float = 10,
     on_update: Callable[[dict[str, Any]], None] | None = None,
+    not_found_grace_seconds: float = 120,
 ) -> dict[str, Any]:
     last_status = ""
+    started = time.monotonic()
+    reported_not_found = False
     while True:
-        batch = get_batch(key, batch_id)
+        try:
+            batch = get_batch(key, batch_id)
+        except RuntimeError as exc:
+            # Newly created OpenRouter batches can briefly be absent from the
+            # read path even though POST returned a durable id.
+            if "Batch poll HTTP 404" not in str(exc) or time.monotonic() - started > not_found_grace_seconds:
+                raise
+            if not reported_not_found:
+                print(f"batch {batch_id}: waiting for read-after-create visibility", flush=True)
+                reported_not_found = True
+            time.sleep(interval_seconds)
+            continue
         status = str(batch.get("status") or "unknown")
         if on_update is not None:
             on_update(batch)

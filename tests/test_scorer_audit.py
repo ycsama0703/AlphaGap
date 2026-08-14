@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import random
 
 import pytest
@@ -29,6 +30,7 @@ from phase0.openrouter_batch import (
     completion_from_batch_result,
 )
 from phase0.tatqa_run import _existing_successes, build_request_body, stratified_items
+from phase0.tatqa_run import load_dev
 from phase0.tatqa_blind_judge import build_judge_body
 
 
@@ -145,6 +147,24 @@ def test_stratified_sampling_is_deterministic_and_balanced() -> None:
     assert [item["uid"] for item in first] == [item["uid"] for item in second]
     strata = {(item["answer_type"], bool(item["gold_scale"])) for item in first}
     assert len(strata) == 4
+
+
+def test_load_dev_replaces_an_incomplete_download(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "dev.json"
+    path.write_text("", encoding="utf-8")
+
+    class Response:
+        content = b'[{"table": {}, "paragraphs": [], "questions": []}]'
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return json.loads(self.content)
+
+    monkeypatch.setattr("phase0.tatqa_run.requests.get", lambda *args, **kwargs: Response())
+    assert load_dev(path)[0]["questions"] == []
+    assert json.loads(path.read_text(encoding="utf-8"))[0]["table"] == {}
 
 
 def test_resume_treats_truncation_as_terminal(tmp_path) -> None:
